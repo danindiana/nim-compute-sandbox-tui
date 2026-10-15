@@ -1,0 +1,15 @@
+digraph mcp {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="MCP server: a thin, validating shim; code only ever runs in the sandbox";
+ cl [label="MCP client\n(Hermes / Claude Code)", color="#bc8cff"];
+ subgraph cluster_host { label="host process"; style=rounded; color="#58a6ff"; fontcolor="#58a6ff";
+  mcp [label="sandbox_mcp\nstdio JSON-RPC, 1 request at a time", color="#58a6ff", fillcolor="#13294d"];
+  val [label="validate: lang, code <= 100 kB, timeout cap,\nnet in {off, proxy}, session regex,\nquoted shell args", color="#d29922"]; }
+ subgraph cluster_sb { label="sandbox container (docker exec -i)"; style=rounded; color="#3fb950"; fontcolor="#3fb950";
+  run [label="sandbox_tui --run LANG\n(env -i, prlimit, setsid, session dir)", color="#3fb950"]; interp [label="python3 / node / sqlite3"]; }
+ px [label="egress_proxy\n(holds credentials)", color="#39c5cf", fillcolor="#0d2e2e"];
+ cl->mcp [label="tools/call"]; mcp->val; val->run [label="code on stdin"]; run->interp; interp->px [label="net=proxy only", style=dashed, color="#39c5cf"];
+ run->mcp [label="one JSON object"]; mcp->cl [label="text result\n(status line + output)"];
+ no [shape=note, color="#f85149", fontcolor="#f85149", label="never through MCP:\nnet=on, credentials, host execution"]; no->mcp [style=dotted, arrowhead=none, color="#f85149"];
+}

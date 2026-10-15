@@ -17,14 +17,16 @@ A small, working **Nim REPL that runs Python, JavaScript and SQL** in subprocess
 | Path | What it is |
 |---|---|
 | [`src/sandbox_tui.nim`](src/sandbox_tui.nim) + [`src/sandbox_core.nim`](src/sandbox_core.nim) | The REPL / one-shot CLI and the shared execution core (Nim 2.x, stdlib only) |
+| [`src/sandbox_mcp.nim`](src/sandbox_mcp.nim) | MCP stdio server: `run_code`, `list_gateways`, `list_sessions`; delegates execution to the sandbox container |
 | [`src/egress_proxy.nim`](src/egress_proxy.nim) | Egress proxy: gateway aliases with credential injection, CONNECT allowlist (Nim, `-d:ssl`) |
 | [`config/rules.example.json`](config/rules.example.json) | Proxy rules template (placeholders only) |
 | [`AUDIT.md`](AUDIT.md) | Full audit: arXiv ID/title check, claim-vs-abstract table, Perplexity grounding, code triage |
 | [`research/`](research/) | The agent's original notes with corrections applied (kept for transparency, **unverified**) |
 | [`audit/check_papers.py`](audit/check_papers.py) | Re-runnable arXiv title/ID checker; `audit/original/` holds the agent's uncorrected notes |
-| [`diagrams/`](diagrams/) | 13 dark-theme Graphviz diagrams (`.dot` + `.png` + `.svg`) |
+| [`diagrams/`](diagrams/) | 14 dark-theme Graphviz diagrams (`.dot` + `.png` + `.svg`) |
 | [`tests/smoke.sh`](tests/smoke.sh) | CI smoke test over all three languages, the network guard and the timeout |
 | [`tests/hardening_test.py`](tests/hardening_test.py) | 21 checks: process-group kill, rlimits, scrubbed env, sessions, quota, JSON CLI, live streaming |
+| [`tests/mcp_test.py`](tests/mcp_test.py) | 23 checks for the MCP server (protocol, validation, gateway, secret scan) |
 | [`tests/proxy_test.py`](tests/proxy_test.py) + [`mock_upstream.py`](tests/mock_upstream.py) | 28 end-to-end proxy checks (injection, rejection cases, redaction, tunnel, TUI integration) |
 | [`render.sh`](render.sh) | Re-renders every diagram |
 
@@ -112,7 +114,7 @@ python3 tests/hardening_test.py   # process-group kill, limits, sessions, JSON C
   that shares a uid with a busy host user any realistic cap breaks node (it needs ~10 threads). The container runtime's pids-limit is the real
   fork-bomb bound; `:limits procs N` opts in to a raw cap.
 - Resource limits are per run, not per session; the quota is advisory.
-- **Not implemented:** per-session pods, a FUSE filesystem, MCP, TLS interception (see below for why).
+- **Not implemented:** per-session pods, a FUSE filesystem, TLS interception (see below for why).
 
 ## The egress proxy
 
@@ -167,6 +169,35 @@ method / traversal / CRLF / oversize / chunked / absolute-URI are rejected; secr
 are refused on CONNECT while an allowlisted tunnel works without injection; the secret never appears in the proxy log or TUI output; a TUI
 environment canary is invisible to snippets; direct connects to non-proxy hosts are blocked in proxy mode and everything is blocked in off mode.
 Real-TLS behavior (gateway to an `https://` upstream, CONNECT through the proxy) was additionally checked manually against `example.com`.
+
+## MCP server
+
+`src/sandbox_mcp.nim` exposes the sandbox to MCP clients (Hermes, Claude Code, anything that speaks MCP over stdio).
+
+![mcp architecture](diagrams/14_mcp_architecture.png)
+
+- **Tools:** `run_code(lang, code, timeout_s?, net?, session?)`, `list_gateways()`, `list_sessions()`.
+- **The MCP process never executes code itself.** It runs `docker exec -i <container> sandbox_tui --run ...` so snippets execute inside the sandbox
+  container, not on the machine hosting the MCP server (an MCP server on the host would otherwise be an unsandboxed code-execution tool).
+  A `--local` runner exists for tests/CI only.
+- **Guard rails:** `net` accepts `off|proxy` only (`on` is refused); code ≤ 100 kB; `timeout_s` capped by `--max-timeout` (default 60);
+  session names validated; container/path/proxy arguments are validated and every shell argument is quoted. Requests are handled one at a time.
+- **No credentials pass through it.** Gateways appear only as alias names; the egress proxy injects the secret out-of-band. The tests scan every
+  byte the server sends for a canary secret.
+- Code errors and timeouts are normal *results* (`isError: false`, with a `status:` line and the traceback); `isError: true` is reserved for
+  invalid arguments and runner failures.
+
+```bash
+nim c -d:release -o:src/sandbox_mcp src/sandbox_mcp.nim
+# register (examples; adjust paths):
+hermes mcp add sandbox --command /path/to/sandbox_mcp --args --container <sandbox-container> --exec-path /path/in/container/sandbox_tui --workdir /path/in/container
+claude mcp add sandbox -- /path/to/sandbox_mcp --container <sandbox-container> --exec-path /path/in/container/sandbox_tui
+python3 tests/mcp_test.py                                   # local runner (what CI runs)
+python3 tests/mcp_test.py --container <name> --exec-path P  # same checks through docker exec
+```
+`tests/mcp_test.py` (23 checks) covers the handshake, notifications, tool schemas, ok/error/timeout/js/sql/session behavior, every validation
+refusal, JSON-RPC error codes, malformed input, gateway calls through the proxy, and the secret scan. It also passed against a live sandbox
+container through `docker exec`.
 
 ## The audit
 

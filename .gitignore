@@ -6,3 +6,4 @@ nimcache/
 src/egress_proxy
 rules.json
 !config/rules.example.json
+src/sandbox_mcp

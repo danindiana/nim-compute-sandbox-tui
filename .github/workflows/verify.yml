@@ -12,6 +12,8 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y graphviz sqlite3
       - name: Build
         run: nim c --hints:off -d:release -o:src/sandbox_tui src/sandbox_tui.nim
+      - name: Build MCP server
+        run: nim c --hints:off -d:release -o:src/sandbox_mcp src/sandbox_mcp.nim
       - name: Build egress proxy
         run: nim c --hints:off -d:ssl -d:release -o:src/egress_proxy src/egress_proxy.nim
       - name: Smoke test (python, js, sql, net guard, timeout)
@@ -20,6 +22,8 @@ jobs:
         run: python3 tests/hardening_test.py
       - name: Egress proxy end-to-end tests
         run: python3 tests/proxy_test.py
+      - name: MCP server tests (local runner)
+        run: python3 tests/mcp_test.py
       - name: Paper title check (non-gating; needs arXiv)
         continue-on-error: true
         run: python3 -I audit/check_papers.py --dir research
