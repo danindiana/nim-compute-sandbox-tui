@@ -16,6 +16,8 @@ jobs:
         run: nim c --hints:off -d:ssl -d:release -o:src/egress_proxy src/egress_proxy.nim
       - name: Smoke test (python, js, sql, net guard, timeout)
         run: tests/smoke.sh
+      - name: Hardening tests (group kill, limits, sessions, JSON CLI, streaming)
+        run: python3 tests/hardening_test.py
       - name: Egress proxy end-to-end tests
         run: python3 tests/proxy_test.py
       - name: Paper title check (non-gating; needs arXiv)

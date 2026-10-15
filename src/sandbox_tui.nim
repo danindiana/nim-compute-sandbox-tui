@@ -1,77 +1,25 @@
-# Compute sandbox REPL: type code, end with a lone "." line, it runs in a
-# subprocess with a timeout; output, exit code and elapsed time are shown.
-# Languages: python (default), js (node), sql (sqlite3, persistent session.db).
-# Network modes (:net): off (default), proxy, on. off/proxy use a SOFT guard
-# (python socket / node net patches); it is a convenience check, NOT a security
-# boundary. proxy mode only lets code reach the egress proxy (egress_proxy.nim),
-# which allowlists domains and injects credentials the sandboxed code never sees.
-# Snippets run with a scrubbed environment (env -i), so the TUI's own env vars
-# (API keys etc.) are not visible to them.
-import os, osproc, strutils, times, terminal, httpclient
+# Compute sandbox REPL: type code, end with a lone "." line; it runs in a subprocess
+# (python3 / node / sqlite3) with a timeout, resource limits and a scrubbed environment.
+# Output streams live; status, exit code and elapsed time follow.
+#
+#   sandbox_tui                         interactive REPL
+#   sandbox_tui --run LANG [opts] < code   one-shot, prints one JSON object (used by MCP)
+#   sandbox_tui --sessions | --gateways    JSON helpers for scripts
+#     opts: --timeout S  --net off|proxy  --session NAME  --dir DIR
+#
+# Network (:net): off (default), proxy, on. off/proxy are a SOFT guard (monkeypatches);
+# not a security boundary. proxy only reaches egress_proxy, which allowlists domains and
+# injects credentials the sandboxed code never sees. See README.
+import os, strutils, times, terminal, httpclient, json
 from unicode import runeLen
+import sandbox_core
 
-const
-  MaxHistory = 50
-  MaxOutput = 20_000          # bytes of output shown per run
-
-type Run = object
-  lang: string
-  code: string
-  output: string
-  exitCode: int
-  timedOut: bool
-  secs: float
-
-const
-  PyGuard = """import socket as _s, os
-_allow = os.environ.get("SANDBOX_ALLOW", "")
-_ah, _, _ap = _allow.partition(":")
-def _deny(*a, **k):
-    raise OSError("network disabled in sandbox (use :net proxy or :net on)")
-def _ok(addr):
-    return bool(_allow) and isinstance(addr, tuple) and str(addr[0]) in (_ah, "localhost") and str(addr[1]) == _ap
-_oc, _oce, _ogai = _s.socket.connect, _s.socket.connect_ex, _s.getaddrinfo
-def _connect(self, addr):
-    if not _ok(addr): _deny()
-    return _oc(self, addr)
-def _connect_ex(self, addr):
-    if not _ok(addr): _deny()
-    return _oce(self, addr)
-def _gai(host, *a, **k):
-    if not (_allow and host in (_ah, "localhost")): _deny()
-    return _ogai(host, *a, **k)
-_s.socket.connect = _connect
-_s.socket.connect_ex = _connect_ex
-_s.getaddrinfo = _gai
-import runpy, sys
-sys.argv = [sys.argv[1]]
-runpy.run_path(sys.argv[0], run_name="__main__")
-"""
-  JsGuard = """const net = require('net'), dns = require('dns');
-const allow = process.env.SANDBOX_ALLOW || '';
-const [ah, ap] = [allow.split(':')[0], allow.split(':')[1]];
-const deny = () => { throw new Error('network disabled in sandbox (use :net proxy or :net on)'); };
-const hostOk = (h) => allow && (h === ah || h === 'localhost');
-const origConnect = net.Socket.prototype.connect;
-net.Socket.prototype.connect = function (...args) {
-  let a = args[0], host, port;
-  if (Array.isArray(a)) a = a[0];   // node passes pre-normalized [options, cb]
-  if (a && typeof a === 'object') { host = a.host || 'localhost'; port = a.port; }
-  else { port = a; host = typeof args[1] === 'string' ? args[1] : 'localhost'; }
-  if (!hostOk(String(host)) || String(port) !== ap) deny();
-  return origConnect.apply(this, args);
-};
-const origLookup = dns.lookup;
-dns.lookup = function (host, ...rest) { if (!hostOk(String(host))) deny(); return origLookup.call(this, host, ...rest); };
-"""
+const MaxHistory = 50
 
 var
+  sb = newSandbox(getEnv("SANDBOX_DIR", getCurrentDir() / ".runs"))
   history: seq[Run]
   lang = "python"
-  netMode = "off"            # off | proxy | on
-  proxyAddr = getEnv("SANDBOX_PROXY", "127.0.0.1:8899")
-  timeoutSec = 10
-  runDir = getCurrentDir() / ".runs"
 
 proc width(): int =
   result = terminalWidth()
@@ -79,76 +27,25 @@ proc width(): int =
 
 proc rule() = echo "─".repeat(width())
 
-proc netLabel(): string =
-  case netMode
-  of "on": "ON (unrestricted)"
-  of "proxy": "proxy " & proxyAddr
-  else: "off (soft guard)"
-
 proc banner() =
-  let w = min(width(), 60)
+  let w = min(width(), 62)
   echo "┌" & "─".repeat(w - 2) & "┐"
-  for l in ["Compute Sandbox - Nim TUI", "python | js | sql   timeout " & $timeoutSec & "s   net " & netLabel()]:
+  for l in ["Compute Sandbox - Nim TUI",
+            "python | js | sql   timeout " & $sb.timeoutSec & "s   session " & sb.session,
+            "net " & sb.netLabel()]:
     echo "│ " & l & " ".repeat(max(0, w - 4 - l.runeLen)) & " │"
   echo "└" & "─".repeat(w - 2) & "┘"
   echo "Enter code in the current language (" & lang & "). A line with just '.' runs it. ':help' for commands."
 
-proc runCode(lng, code: string): Run =
-  createDir(runDir)
-  let ext = case lng
-            of "js": ".js"
-            of "sql": ".sql"
-            else: ".py"
-  let src = runDir / ("snippet" & ext)
-  let outp = runDir / "snippet.out"
-  writeFile(src, code)
-  writeFile(runDir / "guard.py", PyGuard)
-  writeFile(runDir / "guard.js", JsGuard)
-  removeFile(outp)
-  result.lang = lng
-  result.code = code
-  let t0 = epochTime()
-  let redir = " > " & quoteShell(outp) & " 2>&1 < /dev/null"
-  # scrubbed environment: only what an interpreter needs (+ proxy vars in proxy mode)
-  var envp = "env -i PATH=" & quoteShell(getEnv("PATH", "/usr/local/bin:/usr/bin:/bin")) &
-             " HOME=" & quoteShell(runDir) & " LANG=C.UTF-8"
-  if netMode == "proxy":
-    let pu = "http://" & proxyAddr
-    envp &= " SANDBOX_ALLOW=" & quoteShell(proxyAddr) &
-            " HTTP_PROXY=" & quoteShell(pu) & " HTTPS_PROXY=" & quoteShell(pu) &
-            " http_proxy=" & quoteShell(pu) & " https_proxy=" & quoteShell(pu) &
-            " NO_PROXY=" & quoteShell("127.0.0.1,localhost") & " no_proxy=" & quoteShell("127.0.0.1,localhost") &
-            " SANDBOX_GATEWAY=" & quoteShell(pu & "/gw")
-  let guarded = netMode != "on"
-  var cmd: string
-  case lng
-  of "js":
-    let req = if guarded: " --require " & quoteShell(runDir / "guard.js") else: ""
-    cmd = "exec " & envp & " node" & req & " " & quoteShell(src) & redir
-  of "sql":
-    # persistent db across runs, like a mounted session filesystem
-    cmd = "exec " & envp & " sqlite3 -header -column " & quoteShell(runDir / "session.db") & " < " &
-          quoteShell(src) & " > " & quoteShell(outp) & " 2>&1"
-  else:
-    if guarded:
-      cmd = "exec " & envp & " python3 -u " & quoteShell(runDir / "guard.py") & " " & quoteShell(src) & redir
-    else:
-      cmd = "exec " & envp & " python3 -u " & quoteShell(src) & redir
-  # exec so the timeout kill hits the interpreter itself, not just a wrapper shell
-  let p = startProcess("/bin/sh", args = ["-c", cmd], options = {poUsePath})
-  discard p.waitForExit(timeoutSec * 1000)
-  if p.running:
-    p.kill()
-    discard p.waitForExit()
-  result.exitCode = p.peekExitCode()
-  p.close()
-  result.secs = epochTime() - t0
-  # killed by our timeout => SIGKILL (137) at/after the deadline
-  result.timedOut = result.exitCode == 137 and result.secs >= float(timeoutSec) - 0.1
-  if fileExists(outp):
-    result.output = readFile(outp)
-    if result.output.len > MaxOutput:
-      result.output = result.output[0 ..< MaxOutput] & "\n[output truncated]"
+proc statusOf(r: Run): string =
+  if r.timedOut: "TIMED OUT after " & $sb.timeoutSec & "s"
+  elif r.exitCode == 0: "ok"
+  else: "exit " & $r.exitCode
+
+proc showStatus(r: Run) =
+  echo statusOf(r) & "  (" & formatFloat(r.secs, ffDecimal, 2) & "s)"
+  let w = sb.quotaWarning()
+  if w.len > 0: echo w
 
 proc show(r: Run) =
   rule()
@@ -156,11 +53,25 @@ proc show(r: Run) =
     stdout.write r.output
     if not r.output.endsWith("\n"): echo ""
   rule()
-  let status =
-    if r.timedOut: "TIMED OUT after " & $timeoutSec & "s"
-    elif r.exitCode == 0: "ok"
-    else: "exit " & $r.exitCode
-  echo status & "  (" & formatFloat(r.secs, ffDecimal, 2) & "s)"
+  showStatus r
+
+proc record(r: Run) =
+  history.add r
+  if history.len > MaxHistory: history.delete(0)
+
+proc execute(lng, code: string) =
+  ## run with live streaming, then record
+  rule()
+  var lastNl = true
+  let r = sb.runCode(lng, code, proc (s: string) =
+    stdout.write s
+    stdout.flushFile()
+    lastNl = s.endsWith("\n"))
+  if not lastNl: echo ""
+  if r.truncated: echo "[output truncated]"
+  rule()
+  showStatus r
+  record r
 
 proc help() =
   echo """Commands (only when no code is pending):
@@ -168,17 +79,17 @@ proc help() =
   :history       list previous runs
   :show N        show output of run N
   :rerun N       run snippet N again
-  :lang L        python | js | sql  (sql keeps tables in .runs/session.db)
+  :lang L        python | js | sql
   :net off|proxy|on  off = no network (soft guard); proxy = only via the egress
                  proxy (domain allowlist + credential injection); on = unrestricted
   :gateways      list the proxy's gateway aliases (names only, never secrets)
-  :timeout S     set timeout in seconds
+  :timeout S     wall-clock timeout in seconds (1..600)
+  :limits        show resource limits;  :limits fsize|nofile|procs|cpu N  to change
+                 (procs = RLIMIT_NPROC, per-uid host-wide, off by default; see README)
+  :session NAME  switch session (own dir, HOME and sql db; created on first use)
+  :ws            list sessions and sizes;  :wipe  clear the current session
   :clear         discard pending code (also works mid-entry)
   :quit          exit (also Ctrl+D / Ctrl+C)"""
-
-proc record(r: Run) =
-  history.add r
-  if history.len > MaxHistory: history.delete(0)
 
 proc parseIdx(s: string): int =
   try:
@@ -205,15 +116,12 @@ proc command(line: string): bool =
   of ":rerun":
     let i = parseIdx(arg)
     if i < 0: echo "usage: :rerun N (1.." & $history.len & ")"
-    else:
-      let r = runCode(history[i - 1].lang, history[i - 1].code)
-      record r
-      show r
+    else: execute(history[i - 1].lang, history[i - 1].code)
   of ":timeout":
     try:
       let s = parseInt(arg)
       if s < 1 or s > 600: echo "timeout must be 1..600" else:
-        timeoutSec = s
+        sb.timeoutSec = s
         echo "timeout = " & $s & "s"
     except ValueError: echo "usage: :timeout SECONDS"
   of ":lang":
@@ -222,16 +130,44 @@ proc command(line: string): bool =
       echo "language = " & lang
     else: echo "usage: :lang python|js|sql (now " & lang & ")"
   of ":net":
-    if arg in ["off", "proxy", "on"]: netMode = arg
+    if arg in ["off", "proxy", "on"]: sb.netMode = arg
     else: echo "usage: :net off|proxy|on"
-    echo "net = " & netLabel()
+    echo "net = " & sb.netLabel()
   of ":gateways":
     try:
       let c = newHttpClient(timeout = 2000)
       defer: c.close()
-      echo c.getContent("http://" & proxyAddr & "/gw")
+      echo c.getContent("http://" & sb.proxyAddr & "/gw")
     except CatchableError as e:
-      echo "proxy not reachable at " & proxyAddr & " (" & e.msg & "); start egress_proxy first"
+      echo "proxy not reachable at " & sb.proxyAddr & " (" & e.msg & "); start egress_proxy first"
+  of ":limits":
+    if parts.len == 3:
+      try:
+        let n = parseInt(parts[2])
+        if n < 1: raise newException(ValueError, "positive")
+        case arg
+        of "fsize": sb.limits.fsizeMB = n
+        of "nofile": sb.limits.nofile = n
+        of "procs": sb.limits.procMax = n
+        of "cpu": sb.limits.cpuSlackSec = n
+        else: echo "usage: :limits fsize|nofile|procs|cpu N"
+      except ValueError: echo "limit must be a positive integer"
+    echo "limits: file size " & $sb.limits.fsizeMB & " MB, open files " & $sb.limits.nofile &
+         ", process cap " & (if sb.limits.procMax > 0: $sb.limits.procMax else: "off (container pids-limit applies)") & ", cpu = timeout + " & $sb.limits.cpuSlackSec &
+         "s, address space 2 GB (python/sql; node: 512 MB V8 heap), session quota " & $sb.quotaMB & " MB (soft)"
+  of ":session":
+    if validSession(arg):
+      sb.session = arg
+      echo "session = " & arg & "  (" & sb.sessionDir & ")"
+    else: echo "usage: :session NAME   (letters, digits, _ or -, max 32; now '" & sb.session & "')"
+  of ":ws":
+    let ss = sb.listSessions()
+    if ss.len == 0: echo "(no sessions yet)"
+    for (n, sz) in ss:
+      echo (if n == sb.session: "* " else: "  ") & n & "  " & formatFloat(float(sz) / 1024.0, ffDecimal, 1) & " KB"
+  of ":wipe":
+    sb.wipeSession()
+    echo "session '" & sb.session & "' cleared"
   of ":clear": discard
   else: echo "unknown command " & parts[0] & " (:help)"
   true
@@ -240,10 +176,61 @@ proc onSigint() {.noconv.} =
   echo "\nbye"
   quit(130)
 
+# ---------------------------------------------------------------- one-shot CLI
+
+proc oneShot() =
+  ## sandbox_tui --run LANG [--timeout S] [--net off|proxy] [--session NAME] [--dir DIR]
+  var lng = ""
+  var i = 1
+  while i <= paramCount():
+    let a = paramStr(i)
+    template val(): string =
+      (if i < paramCount(): (inc i; paramStr(i)) else: quit("missing value for " & a, 2))
+    case a
+    of "--run": lng = val()
+    of "--timeout":
+      sb.timeoutSec = parseInt(val())
+    of "--net":
+      let n = val()
+      if n notin ["off", "proxy"]: quit("--net must be off or proxy", 2)
+      sb.netMode = n
+    of "--session":
+      let n = val()
+      if not validSession(n): quit("bad session name", 2)
+      sb.session = n
+    of "--dir": sb.baseDir = val()
+    else: quit("unknown option " & a, 2)
+    inc i
+  if lng notin ["python", "js", "sql"]: quit("language must be python, js or sql", 2)
+  if sb.timeoutSec < 1 or sb.timeoutSec > 600: quit("timeout must be 1..600", 2)
+  let code = stdin.readAll()
+  if code.len > 200_000: quit("code too large", 2)
+  let r = sb.runCode(lng, code)
+  let status = if r.timedOut: "timeout" elif r.exitCode == 0: "ok" else: "error"
+  echo $(%*{"status": status, "exit_code": r.exitCode, "timed_out": r.timedOut,
+            "secs": r.secs, "output": r.output, "truncated": r.truncated,
+            "session": sb.session, "language": lng, "net": sb.netMode,
+            "quota_warning": sb.quotaWarning()})
+
 when isMainModule:
   if findExe("python3") == "":
     stderr.writeLine "python3 not found on PATH"
     quit(1)
+  if paramCount() >= 1 and paramStr(1) == "--run":
+    oneShot()
+    quit(0)
+  if paramCount() >= 1 and paramStr(1) == "--sessions":
+    var arr = newJArray()
+    for (n, sz) in sb.listSessions(): arr.add %*{"name": n, "bytes": sz}
+    echo $(%*{"sessions": arr})
+    quit(0)
+  if paramCount() >= 1 and paramStr(1) == "--gateways":
+    try:
+      let c = newHttpClient(timeout = 2000)
+      echo c.getContent("http://" & sb.proxyAddr & "/gw")
+    except CatchableError as e:
+      echo $(%*{"error": "proxy not reachable at " & sb.proxyAddr})
+    quit(0)
   setControlCHook(onSigint)
   banner()
   var buf: seq[string]
@@ -257,12 +244,11 @@ when isMainModule:
       echo ""
       break
     let t = line.strip()
-    if t == "." :
+    if t == ".":
       if buf.len == 0: continue
-      let r = runCode(lang, buf.join("\n") & "\n")
+      let code = buf.join("\n") & "\n"
       buf.setLen(0)
-      record r
-      show r
+      execute(lang, code)
     elif t == ":clear":
       buf.setLen(0)
       echo "(cleared)"

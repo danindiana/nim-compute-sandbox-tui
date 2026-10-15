@@ -16,14 +16,15 @@ A small, working **Nim REPL that runs Python, JavaScript and SQL** in subprocess
 
 | Path | What it is |
 |---|---|
-| [`src/sandbox_tui.nim`](src/sandbox_tui.nim) | The working REPL (Nim 2.x, stdlib only) |
+| [`src/sandbox_tui.nim`](src/sandbox_tui.nim) + [`src/sandbox_core.nim`](src/sandbox_core.nim) | The REPL / one-shot CLI and the shared execution core (Nim 2.x, stdlib only) |
 | [`src/egress_proxy.nim`](src/egress_proxy.nim) | Egress proxy: gateway aliases with credential injection, CONNECT allowlist (Nim, `-d:ssl`) |
 | [`config/rules.example.json`](config/rules.example.json) | Proxy rules template (placeholders only) |
 | [`AUDIT.md`](AUDIT.md) | Full audit: arXiv ID/title check, claim-vs-abstract table, Perplexity grounding, code triage |
 | [`research/`](research/) | The agent's original notes with corrections applied (kept for transparency, **unverified**) |
 | [`audit/check_papers.py`](audit/check_papers.py) | Re-runnable arXiv title/ID checker; `audit/original/` holds the agent's uncorrected notes |
-| [`diagrams/`](diagrams/) | 12 dark-theme Graphviz diagrams (`.dot` + `.png` + `.svg`) |
+| [`diagrams/`](diagrams/) | 13 dark-theme Graphviz diagrams (`.dot` + `.png` + `.svg`) |
 | [`tests/smoke.sh`](tests/smoke.sh) | CI smoke test over all three languages, the network guard and the timeout |
+| [`tests/hardening_test.py`](tests/hardening_test.py) | 21 checks: process-group kill, rlimits, scrubbed env, sessions, quota, JSON CLI, live streaming |
 | [`tests/proxy_test.py`](tests/proxy_test.py) + [`mock_upstream.py`](tests/mock_upstream.py) | 28 end-to-end proxy checks (injection, rejection cases, redaction, tunnel, TUI integration) |
 | [`render.sh`](render.sh) | Re-renders every diagram |
 
@@ -56,7 +57,9 @@ Type code (multiple lines allowed); a line containing only `.` runs it.
 | `:lang python\|js\|sql` | Switch language (python3, node, sqlite3) |
 | `:net off\|proxy\|on` | **off** (default): no network; **proxy**: only the egress proxy; **on**: unrestricted. off/proxy use a soft guard (see limits) |
 | `:gateways` | List the proxy's gateway alias names (never secrets) |
-| `:timeout S` | Per-run timeout, 1–600 s (default 10) |
+| `:timeout S` | Wall-clock timeout, 1–600 s (default 10) |
+| `:limits [fsize\|nofile\|procs\|cpu N]` | Show or change resource limits |
+| `:session NAME` / `:ws` / `:wipe` | Switch session (own dir, `HOME`, sql db) / list sessions and sizes / clear the current one |
 | `:history` / `:show N` / `:rerun N` | Review and repeat the last 50 runs |
 | `:clear` | Discard pending (un-run) input |
 | `:help`, `:quit` | Help / exit (Ctrl+D and Ctrl+C also exit) |
@@ -67,22 +70,34 @@ Type code (multiple lines allowed); a line containing only `.` runs it.
 # needs: nim >= 2.0, python3; node and sqlite3 for those languages
 nim c -d:release -o:src/sandbox_tui src/sandbox_tui.nim
 cd src && ./sandbox_tui
-tests/smoke.sh        # from the repo root; exercises everything below
+tests/smoke.sh        # from the repo root: languages, net guard, timeout
+python3 tests/hardening_test.py   # process-group kill, limits, sessions, JSON CLI, streaming (21 checks)
 ```
 
 ### How it works
 
 ![architecture](diagrams/02_sandbox_tui_architecture.png)
 
-- Each run writes the snippet to `.runs/snippet.{py,js,sql}` and starts `/bin/sh -c 'exec <interpreter> ... > out 2>&1'`.
-  Using `exec` means the timeout kill hits the interpreter itself, not a wrapper shell.
-- Output goes to a file (no pipe-buffer deadlocks), is capped at 20 KB, and is shown with status and elapsed time.
-- **SQL** uses `sqlite3` against a persistent `.runs/session.db`, so tables survive between runs (a small analogue of a
-  persistent session filesystem).
+- Each run writes the snippet into its **session directory** (`.runs/sessions/<name>/`, default session `default`) and starts
+  `/bin/sh -c 'cd <session> && exec prlimit ... setsid env -i ... <interpreter>'`. Using `exec` means signals hit the interpreter itself.
+- **Resource limits** (`prlimit`): CPU seconds (timeout + 5), single-file size (50 MB), open files (256), address space 2 GB for
+  python/sqlite3. Node/WebAssembly reserve many GB of *virtual* memory (`fetch` crashes under an address-space cap), so node gets a 512 MB
+  V8 heap cap (`--max-old-space-size`) instead. `:limits` shows and adjusts them.
+- **Timeout kills the whole process group** (`setsid` makes the interpreter a group leader; `kill(-pid, SIGKILL)`), so child processes die
+  with it, and anything a finished run leaves running in the background is reaped too. A timeout is now recorded explicitly, not inferred.
+- **Live output:** the output file is polled while the child runs and new bytes are printed immediately (capped at 20 KB total).
+- **Sessions:** `:session NAME` switches; each session has its own cwd, `HOME`, files and `session.db` (**SQL** uses `sqlite3` against it,
+  so tables survive between runs, a small analogue of a persistent session filesystem). `:ws` lists sizes, `:wipe` clears one, and a soft
+  50 MB quota warns after a run that exceeds it (it does not delete or block).
 - **Network off** (default) prepends a guard: Python patches `socket.connect/connect_ex/getaddrinfo`; Node patches
   `net.Socket.prototype.connect` and `dns.lookup`. In **proxy** mode the same guards allow connections only to the proxy address.
 - Snippets run under `env -i` with just `PATH`, `HOME` and `LANG` (plus proxy variables in proxy mode), so the TUI's own environment
   variables (API keys etc.) are not visible to them.
+- **One-shot CLI** for scripts and the planned MCP wrapper: `sandbox_tui --run LANG [--timeout S] [--net off|proxy] [--session NAME] [--dir DIR]`
+  reads code on stdin and prints one JSON object (`status`, `exit_code`, `timed_out`, `secs`, `output`, `truncated`, `session`,
+  `quota_warning`). `--net on` is deliberately not accepted there. Also `--sessions` and `--gateways`.
+
+![hardening layers](diagrams/13_run_hardening_layers.png)
 
 ![lifecycle](diagrams/03_run_lifecycle.png)
 
@@ -93,9 +108,10 @@ tests/smoke.sh        # from the repo root; exercises everything below
   environment `unshare -rn` is blocked by seccomp, so per-run network namespaces were not an option.
 - The REPL itself provides **no other isolation**: runs share the working directory and user of the TUI.
 - Scripts get no stdin (`/dev/null`). Output over 20 KB is truncated.
-- Nim quirk worth knowing: `waitForExit(timeout)` returns the process's kill code rather than `-1` on timeout,
-  so a timeout is inferred from `exit code == 137 AND elapsed >= timeout`. A script that is itself SIGKILLed right at the
-  deadline would be reported as a timeout.
+- **No process-count limit by default.** `RLIMIT_NPROC` is counted per real uid across the *whole host* and threads count, so in a container
+  that shares a uid with a busy host user any realistic cap breaks node (it needs ~10 threads). The container runtime's pids-limit is the real
+  fork-bomb bound; `:limits procs N` opts in to a raw cap.
+- Resource limits are per run, not per session; the quota is advisory.
 - **Not implemented:** per-session pods, a FUSE filesystem, MCP, TLS interception (see below for why).
 
 ## The egress proxy

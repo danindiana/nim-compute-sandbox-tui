@@ -2,9 +2,9 @@ digraph life {
  graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
  node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
  edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="One run: timeout handling (Nim waitForExit quirk)";
- a [label="write snippet.ext"]; b [label="startProcess\n/bin/sh -c 'exec interp ... > out 2>&1'"]; c [label="waitForExit(timeout ms)", color="#58a6ff", fillcolor="#13294d"];
- d [label="still running?", shape=diamond, color="#d29922"]; e [label="p.kill() (SIGKILL)", color="#f85149"]; f [label="read exit code"];
- g [label="timedOut = (code == 137)\nAND elapsed >= timeout-0.1s", color="#d29922"]; h [label="read snippet.out\n(truncate at 20 KB)"]; i [label="print result", color="#3fb950"];
- q [shape=note, color="#f0883e", fontcolor="#f0883e", label="Gotcha: waitForExit(timeout) returns the\nkill code, not -1, so timeout is inferred."];
+ a [label="write snippet.ext"]; b [label="startProcess\n/bin/sh -c 'exec interp ... > out 2>&1'"]; c [label="poll loop every 40 ms:\ndrain new output, check deadline", color="#58a6ff", fillcolor="#13294d"];
+ d [label="still running?", shape=diamond, color="#d29922"]; e [label="kill(-pgid, SIGKILL)\nwhole process group", color="#f85149"]; f [label="read exit code"];
+ g [label="timedOut = deadline reached\n(recorded, not inferred)", color="#d29922"]; h [label="read snippet.out\n(truncate at 20 KB)"]; i [label="print result", color="#3fb950"];
+ q [shape=note, color="#f0883e", fontcolor="#f0883e", label="Timeout is now explicit: a 40 ms poll loop\nflags the deadline, then kill(-pgid, SIGKILL)."];
  a->b->c->d; d->e [label="yes"]; d->f [label="no"]; e->f; f->g->h->i; q->g [style=dotted, arrowhead=none, color="#f0883e"];
 }

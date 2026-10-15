@@ -1,0 +1,16 @@
+digraph layers {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=TB; label="Layers around one snippet run (each is soft or hard as labelled)";
+ tui [label="REPL  /  sandbox_tui --run (JSON)", color="#39c5cf", fillcolor="#0d2e2e"];
+ subgraph cluster_l { label="launch shell:  cd session && exec prlimit ... setsid env -i ... interpreter"; style=rounded; color="#58a6ff"; fontcolor="#58a6ff";
+  env [label="env -i\nonly PATH, HOME, LANG (+proxy vars)\nHARD: secrets in TUI env invisible", color="#3fb950"];
+  rl [label="prlimit\nCPU = timeout+5s, file size 50 MB,\nopen files 256, address space 2 GB (node: V8 heap 512 MB)\nHARD (kernel)", color="#3fb950"];
+  sid [label="setsid\nown process group\nHARD: group kill on timeout / reap after exit", color="#3fb950"];
+  dir [label="session dir\ncwd, HOME, session.db; soft 50 MB quota\nSOFT: warns only", color="#d29922"];
+  guard [label="network guard (python / node monkeypatch)\nSOFT: not a boundary", color="#f0883e"]; }
+ run [label="interpreter process (python3 / node / sqlite3)", color="#bc8cff"];
+ out [label="output file -> polled -> streamed live (cap 20 KB)", color="#d29922"];
+ outer [label="outside the runner: container pids-limit, memory limit,\negress firewall, (planned) separate proxy host", color="#8b949e", style="filled,rounded,dashed", shape=box];
+ tui->env->rl->sid->dir->guard->run->out->tui; outer->run [style=dotted, arrowhead=none];
+}

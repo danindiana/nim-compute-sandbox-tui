@@ -5,7 +5,7 @@ import json, os, socket, stat, subprocess, sys, tempfile, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
-MOCK_PORT, PROXY_PORT = 18901, 18902
+MOCK_PORT, PROXY_PORT = 18951, 18952
 TOKEN = "CANARY_gw_secret_90210"
 ENV_CANARY = "CANARY_env_secret_31337"
 fails = []
