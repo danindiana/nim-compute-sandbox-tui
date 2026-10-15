@@ -25,7 +25,7 @@ A small, working **Nim REPL that runs Python, JavaScript and SQL** in subprocess
 | [`audit/check_papers.py`](audit/check_papers.py) | Re-runnable arXiv title/ID checker; `audit/original/` holds the agent's uncorrected notes |
 | [`diagrams/`](diagrams/) | 15 dark-theme Graphviz diagrams (`.dot` + `.png` + `.svg`) |
 | [`tests/smoke.sh`](tests/smoke.sh) | CI smoke test over all three languages, the network guard and the timeout |
-| [`deploy/isolated/`](deploy/isolated/) | Isolated deployment: `up.sh`, `verify.sh` (20 checks), `down.sh` (rollback), demo-rules generator |
+| [`deploy/isolated/`](deploy/isolated/) | Isolated deployment: `up.sh`, `verify.sh` (18 checks), `down.sh` (rollback), demo-rules generator |
 | [`tests/hardening_test.py`](tests/hardening_test.py) | 21 checks: process-group kill, rlimits, scrubbed env, sessions, quota, JSON CLI, live streaming |
 | [`tests/mcp_test.py`](tests/mcp_test.py) | 23 checks for the MCP server (protocol, validation, gateway, secret scan) |
 | [`tests/proxy_test.py`](tests/proxy_test.py) + [`mock_upstream.py`](tests/mock_upstream.py) | 28 end-to-end proxy checks (injection, rejection cases, redaction, tunnel, TUI integration) |
@@ -169,7 +169,7 @@ The mechanism is only as strong as the boundary around it, so there are two depl
      for its own outbound traffic. The rules file is mounted read-only into this container only.
    - Only docker commands are involved: no iptables, UFW or systemd changes. `./up.sh`, `./verify.sh`, `./down.sh` (rollback).
 
-`deploy/isolated/verify.sh` (20 checks, all passing) shows from inside the runner, using raw Python that bypasses the soft guard: no internet,
+`deploy/isolated/verify.sh` (18 checks, all passing) shows from inside the runner, using raw Python that bypasses the soft guard: no internet,
 no DNS, no route to the docker host or the LAN, the proxy port reachable, no `rules*.json` anywhere in the filesystem, read-only rootfs; through
 the proxy: an HTTPS gateway call reaches `example.com`, a non-allowlisted domain is refused, the injected value is invisible to code and absent
 from output and from the proxy log; an existing sandbox container is unaffected and cannot reach the proxy; everything still holds after

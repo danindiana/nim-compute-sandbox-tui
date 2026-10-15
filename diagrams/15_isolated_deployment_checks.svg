@@ -42,7 +42,7 @@
 <polygon fill="#161b22" stroke="#bc8cff" stroke-width="2" points="2065,-56 1639,-56 1639,0 2071,0 2071,-50 2065,-56"/>
 <polyline fill="none" stroke="#bc8cff" stroke-width="2" points="2065,-56 2065,-50 "/>
 <polyline fill="none" stroke="#bc8cff" stroke-width="2" points="2071,-50 2065,-50 "/>
-<text text-anchor="middle" x="1855" y="-31.8" font-family="Helvetica,sans-Serif" font-size="14.00" fill="#e6edf3">20/20 PASS (fake credentials)</text>
+<text text-anchor="middle" x="1855" y="-31.8" font-family="Helvetica,sans-Serif" font-size="14.00" fill="#e6edf3">18/18 PASS (fake credentials)</text>
 <text text-anchor="middle" x="1855" y="-16.8" font-family="Helvetica,sans-Serif" font-size="14.00" fill="#e6edf3">Not covered: daemon restart, reboot, IPv6, kernel escape</text>
 </g>
 <!-- a1&#45;&gt;res -->

@@ -70,6 +70,6 @@ No TLS interception is performed, so injection works for gateway aliases only.
 
 ## Addendum (later still): isolated deployment tested
 `deploy/isolated/` splits the credential-holding proxy from the code runner using a docker `--internal` network (no route out for the runner,
-rules file mounted only into the proxy container). `verify.sh` (20 checks) passes with **fake** credentials, including from raw Python that bypasses the
+rules file mounted only into the proxy container). `verify.sh` (18 checks) passes with **fake** credentials, including from raw Python that bypasses the
 in-runner guard; an existing sandbox container was verified unaffected. This closes the single-container gap noted above; remaining caveats
 (shared kernel, soft in-runner guard, host-side access to the rules file, daemon-restart/reboot/IPv6 untested) are listed in the README.

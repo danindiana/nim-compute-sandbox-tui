@@ -10,6 +10,6 @@ digraph chk {
   c1 [label="gateway -> https://example.com ok"]; c2 [label="python.org refused"]; c3 [label="injected value invisible to code, output and proxy log"]; a5 [label="proxy port reachable"]; }
  subgraph cluster_d { label="blast radius"; style=rounded; color="#58a6ff"; fontcolor="#58a6ff";
   d1 [label="existing sandbox cannot reach proxy"]; d2 [label="existing sandbox keeps its network"]; d3 [label="existing sandbox not on sbx-iso"]; f [label="restart both: still isolated, still reachable"]; }
- res [label="20/20 PASS (fake credentials)\nNot covered: daemon restart, reboot, IPv6, kernel escape", color="#bc8cff", shape=note];
+ res [label="18/18 PASS (fake credentials)\nNot covered: daemon restart, reboot, IPv6, kernel escape", color="#bc8cff", shape=note];
  a1->res; b1->res; c1->res; d1->res;
 }

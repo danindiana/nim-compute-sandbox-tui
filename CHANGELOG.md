@@ -5,4 +5,4 @@
 - Literature verification: `audit/check_papers.py`, `research/PAPER_VERIFICATION.md`, `audit/original/`, diagram 12. Found ZhuLong "+43 pp" error missed in the first pass; corrected Multi-SWE-bench (ID 2504.02605, 7 languages), StarCoder title.
 - Run hardening: sandbox_core.nim; process-group kill, prlimit limits, sessions + soft quota, live output streaming, explicit timeout flag, `--run` JSON CLI; 21-check hardening_test.py; diagram 13.
 - MCP server (src/sandbox_mcp.nim): run_code / list_gateways / list_sessions over stdio; delegates execution to the sandbox container via docker exec; 23-check mcp_test.py (also verified live against the container); diagram 14.
-- Isolated deployment (deploy/isolated: up/verify/down): docker --internal network, separate proxy and runner containers; 20/20 checks with fake credentials; MCP end-to-end through it; diagrams 11 (rewritten) and 15.
+- Isolated deployment (deploy/isolated: up/verify/down): docker --internal network, separate proxy and runner containers; 18/18 checks with fake credentials; MCP end-to-end through it; diagrams 11 (rewritten) and 15.
