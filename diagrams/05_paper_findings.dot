@@ -1,0 +1,12 @@
+digraph papers {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="Literature findings: 44 IDs resolve; titles and numbers need correction";
+ all [label="44 cited arXiv IDs", color="#58a6ff", fillcolor="#13294d"];
+ ok [label="resolve & title correct\n(CodeAct, AutoGen, WebArena, OSWorld,\nSpecBox, TomasuLLM, ZhuLong, ...)", color="#3fb950"];
+ bad [label="resolve but WRONG title (4)", color="#f85149"];
+ b1 [label="2406.00515: 'CodeScope'\n-> LLM code-gen survey"]; b2 [label="2506.03524: 'Multi-SWE-bench'\n-> Seed-Coder"]; b3 [label="2410.03981: 'xCodeEval'\n-> low-resource-language survey"]; b4 [label="2503.01245: 'BigCodeBench'\n-> code-gen survey"];
+ num [label="quoted numbers contradicted", color="#f0883e"];
+ n1 [label="Rust '75%+' -> up to 21.2% resolved"]; n2 [label="EAGER '35-55%' -> up to 37.3%"]; n3 [label="Go '90% pass@1' -> not in paper"];
+ all->ok; all->bad; bad->b1; bad->b2; bad->b3; bad->b4; all->num; num->n1; num->n2; num->n3;
+}

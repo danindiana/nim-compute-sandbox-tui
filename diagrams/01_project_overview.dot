@@ -1,0 +1,12 @@
+digraph overview {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="What was claimed, what was checked, what shipped (audit 2026-10-15)";
+ subgraph cluster_claim { label="Hermes agent output (claimed)"; style="rounded,dashed"; color="#bc8cff"; fontcolor="#bc8cff";
+  c1 [label="46-paper literature study"]; c2 [label="'Perplexity API spec'\n693 lines"]; c3 [label="'Fully working Nim TUI'"]; }
+ subgraph cluster_check { label="Audit (this repo)"; style=rounded; color="#58a6ff"; fontcolor="#58a6ff";
+  k1 [label="arXiv API lookup\n44 IDs", color="#58a6ff", fillcolor="#13294d"]; k2 [label="Perplexity primary source\n(Sandbox API post)", color="#58a6ff", fillcolor="#13294d"]; k3 [label="nim check + run", color="#58a6ff", fillcolor="#13294d"]; }
+ subgraph cluster_out { label="Result"; style=rounded; color="#3fb950"; fontcolor="#3fb950";
+  r1 [label="44/44 IDs exist\n4 wrong titles\nseveral numbers false", color="#d29922"]; r2 [label="design, NOT a Perplexity\nreproduction", color="#f85149"]; r3 [label="printed text only;\nreplaced by src/sandbox_tui.nim", color="#3fb950"]; }
+ c1->k1->r1 [color="#d29922"]; c2->k2->r2 [color="#f85149"]; c3->k3->r3 [color="#3fb950"];
+}

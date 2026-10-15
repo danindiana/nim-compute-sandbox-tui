@@ -1,0 +1,11 @@
+digraph method {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="Audit method: every claim checked against an external or executable source";
+ s1 [label="STATUS/PAPERS/NON_PYTHON\nPAPERS/API_SPEC", color="#bc8cff"]; s2 [label="extract 44 arXiv IDs"];
+ a1 [label="export.arxiv.org\nid_list query", color="#39c5cf", fillcolor="#0d2e2e"]; a2 [label="compare title + abstract\nvs quoted numbers", color="#58a6ff", fillcolor="#13294d"];
+ w1 [label="web search:\nPerplexity primary sources", color="#39c5cf", fillcolor="#0d2e2e"]; w2 [label="published vs\nthird-party vs modeled", color="#58a6ff", fillcolor="#13294d"];
+ n1 [label="nim check on every\ncore/ ui/ app file", color="#3fb950"]; n2 [label="run what compiles", color="#3fb950"];
+ rep [label="AUDIT.md", color="#d29922"];
+ s1->s2->a1->a2->rep; s1->w1->w2->rep; s1->n1->n2->rep;
+}

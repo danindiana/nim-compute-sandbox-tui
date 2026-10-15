@@ -1,0 +1,12 @@
+digraph deploy {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=TB; label="Where this ran: Hermes Docker sandbox on the author's workstation";
+ subgraph cluster_host { label="host (Linux workstation)"; style=rounded; color="#58a6ff"; fontcolor="#58a6ff";
+  ws [label="hermes-sessions/ (host dir)"]; 
+  subgraph cluster_c { label="sandbox container (hermes-sandbox:nim; Nim 2.2.12)"; style="rounded,dashed"; color="#bc8cff"; fontcolor="#bc8cff";
+   wk [label="/workspace (rw mount)"]; tui [label="sandbox_tui + python3 + node + sqlite3", color="#3fb950"]; ro [label="/ro/* read-only host mounts"]; sec [label="seccomp + no-new-privileges\n(unshare blocked => no real per-run net isolation)", color="#f0883e"]; }
+ }
+ net [label="egress policy: LAN/private ranges blocked,\ninternet allowed", color="#39c5cf", fillcolor="#0d2e2e"];
+ ws->wk [label="bind mount"]; wk->tui; tui->net [label="soft guard only"]; sec->tui [style=dotted];
+}

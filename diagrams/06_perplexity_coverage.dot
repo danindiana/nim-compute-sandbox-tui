@@ -1,0 +1,12 @@
+digraph cov {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="What Perplexity publishes vs what the Hermes spec and this TUI model";
+ subgraph cluster_p { label="Perplexity Sandbox API post (primary)"; style=rounded; color="#3fb950"; fontcolor="#3fb950";
+  p1 [label="K8s pod per session"]; p2 [label="FUSE persistent filesystem"]; p3 [label="Python / JavaScript / SQL"]; p4 [label="no network by default"]; p5 [label="egress proxy injects credentials"]; }
+ subgraph cluster_t { label="Third-party only (UNVERIFIED)"; style="rounded,dashed"; color="#f0883e"; fontcolor="#f0883e";
+  t1 [label="'SPACE' runtime"]; t2 [label="Firecracker microVMs, ~125 ms boot"]; t3 [label="rolling snapshots"]; }
+ subgraph cluster_m { label="Modeled here"; style=rounded; color="#58a6ff"; fontcolor="#58a6ff";
+  m1 [label="Hermes API_SPEC: none of the five\n(generic COW / prewarm design)", color="#f85149"]; m2 [label="sandbox_tui: py/js/sql, soft net-off,\npersistent sqlite db", color="#58a6ff", fillcolor="#13294d"]; m3 [label="NOT built: pods, FUSE,\negress credential proxy", color="#d29922"]; }
+ p3->m2 [color="#3fb950"]; p4->m2 [label="soft guard", color="#d29922"]; p2->m2 [label="sqlite file only", style=dashed, color="#d29922"]; p1->m3; p5->m3; p1->m1 [style=dotted, color="#f85149", label="absent"]; t1->m3 [style=dotted]; t2->m3 [style=dotted];
+}

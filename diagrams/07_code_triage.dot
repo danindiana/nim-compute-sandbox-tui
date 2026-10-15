@@ -1,0 +1,11 @@
+digraph triage {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="nim check / run results for Hermes's Nim files";
+ root [label="safetybox Nim sources"];
+ f [label="FAIL to compile (moved to _broken/)", color="#f85149"];
+ f1 [label="mcp_server: field named 'method'"]; f2 [label="python_sandbox: syntax error"]; f3 [label="sandbox: bad import path"]; f4 [label="tool_registry: Python-isms Json/dict"]; f5 [label="ui/console: imports 'ratatui' (Rust lib)"]; f6 [label="ui/main_tui: syntax error"];
+ s [label="compile but fake", color="#d29922"]; s1 [label="app_perplexity_sandbox:\nreturns 'ready' strings, runs nothing\n(now labeled STUB)"]; s2 [label="app_tui: prints fixed text, exits"];
+ g [label="actually works", color="#3fb950"]; g1 [label="src/sandbox_tui.nim", color="#3fb950", fillcolor="#1f2937"];
+ root->f; f->f1; f->f2; f->f3; f->f4; f->f5; f->f6; root->s; s->s1; s->s2; root->g; g->g1;
+}

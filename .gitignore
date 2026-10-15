@@ -1,0 +1,5 @@
+src/sandbox_tui
+src/.runs/
+.runs/
+nimcache/
+*.bak*
