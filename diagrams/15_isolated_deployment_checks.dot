@@ -1,0 +1,15 @@
+digraph chk {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=TB; label="verify.sh: what is checked, and what the result shows";
+ subgraph cluster_a { label="runner cannot (raw python, guard bypassed)"; style=rounded; color="#f85149"; fontcolor="#f85149";
+  a1 [label="reach 1.1.1.1:53"]; a2 [label="resolve example.com"]; a3 [label="reach host gateway :22"]; a4 [label="reach LAN gateway :80"]; }
+ subgraph cluster_b { label="runner has no secret"; style=rounded; color="#d29922"; fontcolor="#d29922";
+  b1 [label="no rules.json mounted"]; b2 [label="find / finds no rules*.json"]; b3 [label="rootfs read-only"]; }
+ subgraph cluster_c { label="through the proxy"; style=rounded; color="#3fb950"; fontcolor="#3fb950";
+  c1 [label="gateway -> https://example.com ok"]; c2 [label="python.org refused"]; c3 [label="injected value invisible to code, output and proxy log"]; a5 [label="proxy port reachable"]; }
+ subgraph cluster_d { label="blast radius"; style=rounded; color="#58a6ff"; fontcolor="#58a6ff";
+  d1 [label="existing sandbox cannot reach proxy"]; d2 [label="existing sandbox keeps its network"]; d3 [label="existing sandbox not on sbx-iso"]; f [label="restart both: still isolated, still reachable"]; }
+ res [label="20/20 PASS (fake credentials)\nNot covered: daemon restart, reboot, IPv6, kernel escape", color="#bc8cff", shape=note];
+ a1->res; b1->res; c1->res; d1->res;
+}

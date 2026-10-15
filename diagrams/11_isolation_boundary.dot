@@ -1,13 +1,16 @@
 digraph iso {
  graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
  node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
- edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="Where the secret lives vs where code runs (deployment matters more than the code)";
- subgraph cluster_good { label="intended deployment: separate trust zones"; style=rounded; color="#3fb950"; fontcolor="#3fb950";
-  sb1 [label="sandbox (container/VM)\nno secrets, network only to proxy port", color="#3fb950"]; px1 [label="egress_proxy on host or sidecar\nrules.json readable only by proxy user", color="#58a6ff", fillcolor="#13294d"]; net1 [label="internet", color="#39c5cf", fillcolor="#0d2e2e"];
-  sb1->px1 [label="only allowed path"]; px1->net1 [label="allowlist + injection"]; }
- subgraph cluster_demo { label="this repo's tested demo: everything in ONE container, same uid"; style="rounded,dashed"; color="#f0883e"; fontcolor="#f0883e";
-  sb2 [label="snippet process\n(env -i, soft guard)"]; px2 [label="egress_proxy process", color="#58a6ff"]; file2 [label="rules.json", color="#f85149", shape=note];
-  sb2->px2 [label="proxy mode"]; px2->file2 [style=dashed, dir=none]; sb2->file2 [label="CAN read it\n(same uid) -> secret not protected", color="#f85149", style=dashed, fontcolor="#f85149"]; }
- note [shape=note, color="#d29922", fontcolor="#d29922", label="The guard is a monkeypatch.\nHonest claim: the demo shows the mechanism\nand the API shape, not secret isolation."];
- note->sb2 [style=dotted, arrowhead=none, color="#d29922"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="Isolation boundary: demo (one container) vs tested isolated deployment";
+ subgraph cluster_good { label="deploy/isolated  (verified by verify.sh, fake credentials)"; style=rounded; color="#3fb950"; fontcolor="#3fb950";
+  subgraph cluster_int { label="docker network sbx-iso  (--internal: no gateway, no internet, no host/LAN route)"; style="rounded,dashed"; color="#bc8cff"; fontcolor="#bc8cff";
+   run [label="sbx-runner\nsandbox_tui, read-only rootfs, cap-drop ALL\nno rules file, no route out", color="#3fb950"];
+   px [label="sbx-proxy\negress_proxy, listens on sbx-iso IP only\nrules.json mounted read-only HERE only", color="#58a6ff", fillcolor="#13294d"]; }
+  eg [label="egress network (hermes-sbx)\nLAN + metadata blocked, internet open", color="#39c5cf", fillcolor="#0d2e2e"]; net [label="allowlisted internet", color="#39c5cf", fillcolor="#0d2e2e"];
+  run->px [label="only reachable service"]; px->eg [label="proxy's own outbound"]; eg->net; }
+ subgraph cluster_demo { label="single-container demo: same uid, same filesystem"; style="rounded,dashed"; color="#f0883e"; fontcolor="#f0883e";
+  sb2 [label="snippet process\n(env -i, soft guard)"]; px2 [label="egress_proxy", color="#58a6ff"]; file2 [label="rules.json", color="#f85149", shape=note];
+  sb2->px2 [label="proxy mode"]; sb2->file2 [label="CAN read it\n(same uid)", color="#f85149", style=dashed, fontcolor="#f85149"]; px2->file2 [style=dashed, dir=none]; }
+ other [label="other containers (e.g. existing sandbox)\ncannot reach sbx-iso or the proxy", color="#8b949e"]; other->px [style=dotted, label="blocked (d1)", color="#f85149", fontcolor="#f85149"];
+ left [shape=note, color="#d29922", fontcolor="#d29922", label="Still true: shared host kernel; in-runner guard is a monkeypatch;\nhost rules file / docker socket holders can read the credential;\ndocker-daemon restart and reboot not tested."];
 }

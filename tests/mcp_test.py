@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MCP stdio tests. Default: --local runner (tests/CI). With --container NAME [--exec-path P] [--workdir D]:
+"""MCP stdio tests. Default: --local runner (tests/CI). With --container NAME [--exec-path P] [--workdir D] [--proxy H:P] [--example-gateway]:
 runs the same checks through `docker exec` against a real sandbox container."""
 import json, os, socket, subprocess, sys, tempfile, time
 
@@ -31,7 +31,7 @@ os.chmod(rules_path, 0o600)
 mock = subprocess.Popen([sys.executable, os.path.join(ROOT, "tests", "mock_upstream.py"), str(MOCK_PORT), TOKEN])
 proxy = subprocess.Popen([os.path.join(SRC, "egress_proxy"), rules_path], stderr=subprocess.DEVNULL)
 if container:
-    cmd = [os.path.join(SRC, "sandbox_mcp"), "--container", container, "--proxy", "172.30.0.1:%d" % PROXY_PORT] \
+    cmd = [os.path.join(SRC, "sandbox_mcp"), "--container", container, "--proxy", args[args.index("--proxy") + 1] if "--proxy" in args else "172.29.0.2:8899"] \
         + (["--exec-path", args[args.index("--exec-path") + 1]] if "--exec-path" in args else []) + (["--workdir", args[args.index("--workdir") + 1]] if "--workdir" in args else []) + ["--max-timeout", "20"]
 else:
     cmd = [os.path.join(SRC, "sandbox_mcp"), "--local", "--bin", os.path.join(SRC, "sandbox_tui"),
@@ -111,7 +111,16 @@ try:
         check("G2 net=proxy reaches gateway; credential injected by the proxy", "GW authorized" in text, text)
         res, text, _ = tool("run_code", lang="python", code="import socket\nsocket.create_connection(('1.1.1.1', 53), 2)\n", net="proxy")
         check("G3 net=proxy still blocks direct connects", "status: error" in text and "network disabled" in text, text)
-    check("X1 credential never appeared in any MCP response", all(TOKEN not in t for t in all_text))
+    if container and "--example-gateway" in args:
+        res, text, _ = tool("list_gateways")
+        check("E1 isolated deployment: list_gateways shows 'example'", "example" in text and "FAKE-demo" not in text, text)
+        code = "import os, urllib.request\nprint('GW', 'Example Domain' in urllib.request.urlopen(os.environ['SANDBOX_GATEWAY'] + '/example/').read().decode())\n"
+        res, text, _ = tool("run_code", lang="python", code=code, net="proxy", timeout_s=20)
+        check("E2 isolated deployment: gateway call works via MCP -> runner -> proxy", "GW True" in text, text)
+        res, text, _ = tool("run_code", lang="python", code="import urllib.request\nurllib.request.urlopen('https://example.com', timeout=5)\n", net="off", timeout_s=15)
+        check("E3 isolated deployment: net=off blocks", "status: error" in text, text)
+        all_text.append("")
+    check("X1 credential never appeared in any MCP response", all(TOKEN not in t and "FAKE-demo" not in t for t in all_text))
 finally:
     for pr in (srv, proxy, mock):
         try: pr.terminate()

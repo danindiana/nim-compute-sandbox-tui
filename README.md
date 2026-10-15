@@ -23,8 +23,9 @@ A small, working **Nim REPL that runs Python, JavaScript and SQL** in subprocess
 | [`AUDIT.md`](AUDIT.md) | Full audit: arXiv ID/title check, claim-vs-abstract table, Perplexity grounding, code triage |
 | [`research/`](research/) | The agent's original notes with corrections applied (kept for transparency, **unverified**) |
 | [`audit/check_papers.py`](audit/check_papers.py) | Re-runnable arXiv title/ID checker; `audit/original/` holds the agent's uncorrected notes |
-| [`diagrams/`](diagrams/) | 14 dark-theme Graphviz diagrams (`.dot` + `.png` + `.svg`) |
+| [`diagrams/`](diagrams/) | 15 dark-theme Graphviz diagrams (`.dot` + `.png` + `.svg`) |
 | [`tests/smoke.sh`](tests/smoke.sh) | CI smoke test over all three languages, the network guard and the timeout |
+| [`deploy/isolated/`](deploy/isolated/) | Isolated deployment: `up.sh`, `verify.sh` (20 checks), `down.sh` (rollback), demo-rules generator |
 | [`tests/hardening_test.py`](tests/hardening_test.py) | 21 checks: process-group kill, rlimits, scrubbed env, sessions, quota, JSON CLI, live streaming |
 | [`tests/mcp_test.py`](tests/mcp_test.py) | 23 checks for the MCP server (protocol, validation, gateway, secret scan) |
 | [`tests/proxy_test.py`](tests/proxy_test.py) + [`mock_upstream.py`](tests/mock_upstream.py) | 28 end-to-end proxy checks (injection, rejection cases, redaction, tunnel, TUI integration) |
@@ -156,19 +157,39 @@ src/egress_proxy                       # or: src/egress_proxy --listen 127.0.0.1
 
 ### What the proxy does and does not protect
 
+The mechanism is only as strong as the boundary around it, so there are two deployments:
+
+1. **Single container (demo, `tests/proxy_test.py`):** sandboxed code runs as the same user as the proxy and can read `rules.json`, so the
+   credential is **not** protected there. It demonstrates the mechanism and API shape with canary secrets.
+2. **Isolated deployment (`deploy/isolated/`, tested):** the proxy and the runner are separate containers.
+   - `sbx-iso` is a `docker network create --internal` network: no gateway, no internet, no route to the host or LAN.
+   - `sbx-runner` (where code runs) is attached **only** to `sbx-iso`, with a read-only root filesystem, all capabilities dropped,
+     `no-new-privileges`, and memory/pids limits. The rules file is not mounted into it.
+   - `sbx-proxy` is on `sbx-iso` (listening only on that address, so other networks cannot call its gateways) and on an existing egress network
+     for its own outbound traffic. The rules file is mounted read-only into this container only.
+   - Only docker commands are involved: no iptables, UFW or systemd changes. `./up.sh`, `./verify.sh`, `./down.sh` (rollback).
+
+`deploy/isolated/verify.sh` (20 checks, all passing) shows from inside the runner, using raw Python that bypasses the soft guard: no internet,
+no DNS, no route to the docker host or the LAN, the proxy port reachable, no `rules*.json` anywhere in the filesystem, read-only rootfs; through
+the proxy: an HTTPS gateway call reaches `example.com`, a non-allowlisted domain is refused, the injected value is invisible to code and absent
+from output and from the proxy log; an existing sandbox container is unaffected and cannot reach the proxy; everything still holds after
+restarting both containers. `tests/mcp_test.py --container sbx-runner --example-gateway` passes end to end (MCP -> runner -> proxy -> HTTPS).
+
+**Remaining caveats of the isolated deployment:** the network isolation is now enforced by the kernel and docker (no route), but the in-runner
+guard is still a monkeypatch; the runner and proxy share the host kernel (a kernel or docker escape defeats it); anyone who can read the host's
+rules file or use the docker socket can read the credential; the proxy's own outbound path is the egress network's policy (the verification used
+`hermes-sbx`, which blocks LAN and metadata but allows the internet); the verification used a rules file of **fake** values; behavior after a docker
+daemon restart or host reboot was not tested (the containers use `--restart unless-stopped`); IPv6 was not examined.
+
 ![isolation boundary](diagrams/11_isolation_boundary.png)
 
-The mechanism is only as strong as the boundary around it. **In the single-container setup this repo was tested in, sandboxed code runs as the
-same user as the proxy and can read `rules.json`, so the credential is not protected there** — the tests show the mechanism and API shape, with
-canary secrets, not secret isolation. Real isolation needs the proxy in a different trust zone (host process or sidecar container whose rules file the
-sandbox cannot read) and a network policy that lets the sandbox reach *only* the proxy port. The author's container policy blocks private ranges,
-so that topology needs a firewall decision that was deliberately not made here.
+![isolated deployment checks](diagrams/15_isolated_deployment_checks.png)
 
 `tests/proxy_test.py` (28 checks, run in CI) covers: injection reaches the upstream; forged client auth is overridden; unknown alias / disallowed
 method / traversal / CRLF / oversize / chunked / absolute-URI are rejected; secrets are redacted from responses; non-allowlisted hosts and ports
 are refused on CONNECT while an allowlisted tunnel works without injection; the secret never appears in the proxy log or TUI output; a TUI
 environment canary is invisible to snippets; direct connects to non-proxy hosts are blocked in proxy mode and everything is blocked in off mode.
-Real-TLS behavior (gateway to an `https://` upstream, CONNECT through the proxy) was additionally checked manually against `example.com`.
+Real-TLS behavior (gateway to an `https://` upstream, CONNECT through the proxy) was additionally checked manually against `example.com`, and in the isolated deployment by `verify.sh`.
 
 ## MCP server
 

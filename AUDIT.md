@@ -67,3 +67,9 @@ Recommendation 4's egress-proxy item is now implemented as `src/egress_proxy.nim
 Caveat repeated: in the tested single-container setup the proxy and sandboxed code share a uid, so the credential file is readable by the sandbox;
 the implementation demonstrates the mechanism (gateway aliases, header injection, response redaction, CONNECT allowlist) rather than secret isolation.
 No TLS interception is performed, so injection works for gateway aliases only.
+
+## Addendum (later still): isolated deployment tested
+`deploy/isolated/` splits the credential-holding proxy from the code runner using a docker `--internal` network (no route out for the runner,
+rules file mounted only into the proxy container). `verify.sh` (20 checks) passes with **fake** credentials, including from raw Python that bypasses the
+in-runner guard; an existing sandbox container was verified unaffected. This closes the single-container gap noted above; remaining caveats
+(shared kernel, soft in-runner guard, host-side access to the rules file, daemon-restart/reboot/IPv6 untested) are listed in the README.
