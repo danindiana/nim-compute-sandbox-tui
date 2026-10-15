@@ -1,0 +1,13 @@
+digraph lit {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="Literature verification: 43 distinct IDs in the original notes, plus every checkable number";
+ all [label="43 distinct arXiv IDs\n(original notes)", color="#58a6ff", fillcolor="#13294d"];
+ ok [label="32 title correct", color="#3fb950"]; par [label="3 shortened / paraphrased", color="#d29922"]; bad [label="5 WRONG\n(4 swapped IDs + invented StarCoder subtitle)", color="#f85149"]; nt [label="3 ID only, no title", color="#8b949e"];
+ num [label="checkable numbers (abstract only)", color="#58a6ff", fillcolor="#13294d"];
+ sup [label="supported: 8x tokens, SpecBox, TomasuLLM,\nZhuLong 22.1%, 41.8%, CodeAct 20%,\nToolCaching 34%, 600 pairs", color="#3fb950"];
+ con [label="contradicted: ZhuLong +43pp, EAGER 35-55%,\nGo 90% pass@1, Rust 75%, '88 languages'", color="#f85149"];
+ uv [label="unverifiable from abstracts:\n100K->13K, 2-5s compile, 159 papers", color="#d29922"];
+ fix [label="research/ corrected;\naudit/original/ kept;\ncheck_papers.py re-runnable", color="#bc8cff", shape=note];
+ all->ok; all->par; all->bad; all->nt; num->sup; num->con; num->uv; bad->fix [style=dashed]; con->fix [style=dashed];
+}

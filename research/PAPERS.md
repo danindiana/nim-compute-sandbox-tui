@@ -9,7 +9,7 @@
    - **Status:** Downloaded via web_extract
    - **Key Topics:** LLM-in-Sandbox, code sandbox environments, general agentic intelligence
    - **Key Findings:**
-     - 8x reduction in token consumption for long-context scenarios (100K → 13K tokens)
+     - up to 8x reduction in token consumption (abstract). [The '100K → 13K tokens' example is not in the abstract; 100/13 ≈ 7.7x is consistent but unverified]
      - LLMs spontaneously leverage sandbox for non-code tasks
      - Three meta-capabilities: external resource access, file management, code execution
      - Minimal toolset with exploratory design principle
@@ -42,7 +42,7 @@
    - **Status:** Downloaded via web_extract
    - **Key Topics:** MCP tools, sandbox execution, API self-exploration
    - **Key Findings:**
-     - +43 pp accuracy gain over static RAG (78.5% vs 23.6%)
+     - 78.5% Pass@1 vs 23.6% for a pure-LLM baseline (a 54.9 pp gap, abstract). [The earlier '+43 pp over static RAG' was wrong: the abstract's 41.2 pp figure is the drop when sandbox execution is removed, and the baseline is a pure LLM, not static RAG]
      - Three MCP tools: search_apis, get_api_details, run_code
      - Offline API self-exploration for undocumented APIs
      - 22.1% reduction in tool calls via self-exploration
@@ -53,7 +53,7 @@
    - **Status:** Downloaded via web_extract
    - **Key Topics:** Enterprise benchmarks, sandbox evaluation, access control
    - **Key Findings:**
-     - 500 diverse tasks across software engineering, HR, finance, IT
+     - 500 diverse tasks across software engineering, HR, finance, and administrative domains (abstract says 'administrative', not 'IT')
      - First comprehensive enterprise benchmark simulation
      - Persona-based tasks with access control hierarchies
      - Even SOTA models achieve only 41.8% task completion

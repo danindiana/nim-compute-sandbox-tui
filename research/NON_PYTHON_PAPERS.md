@@ -80,7 +80,7 @@
 
 #### 12. Compiler Stack Integration
 - **The New Compiler Stack: Survey on LLMs and Compilers** (arXiv:2601.02045)
-  - **Coverage:** 159 papers on LLM-enabled compilers
+  - **Coverage:** [unverified: '159 papers' is not in the abstract; paper is a survey with a taxonomy of design philosophy/methodology/abstraction/task]
   - **Languages:** C/C++/Go/Rust/Java/JavaScript/Python/Ruby/etc.
   - **Finding:** Compilers enable functional verification for generated code
 
@@ -111,7 +111,7 @@
 ### Category 3: Cross-Language Execution Frameworks (5 papers)
 
 #### 17. Multi-Language Benchmark Suite
-- **Multi-SWE-Bench** covers 1,600+ instances across 88 languages [unverified: no correct arXiv ID in this project; 2506.03524 is Seed-Coder]
+- **Multi-SWE-Bench** (real ID arXiv:2504.02605, verified) covers 1,632 instances across **7 languages** (Java, TypeScript, JavaScript, Go, Rust, C, C++). [The earlier '88 languages' claim was wrong; the project's ID 2506.03524 is Seed-Coder]
 - **Languages:** Python, Java, TypeScript, JavaScript, Go, Rust, C, C++, etc.
 - **Finding:** Multi-language SWE agents need language-specific tool dispatch
 
@@ -119,7 +119,7 @@
 - **ToolCaching: Towards Efficient Caching for LLM Tool-Calling** (arXiv:2601.15335)
   - **Languages:** Heterogeneous tool calls across languages
   - **Optimization:** Adaptive caching for multi-language tool execution
-  - **Finding:** Tool reuse reduces latency by 34%
+  - **Finding:** ToolCaching with VAAC achieves up to 11% higher cache hit ratios and 34% lower latency vs standard cache policies (abstract; supported, 'across languages' framing is the agent's)
 
 #### 19. Eager: Parallel Execution Across Languages
 - **Executing as You Generate** (arXiv:2604.00491)

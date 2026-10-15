@@ -18,5 +18,8 @@ jobs:
         run: tests/smoke.sh
       - name: Egress proxy end-to-end tests
         run: python3 tests/proxy_test.py
+      - name: Paper title check (non-gating; needs arXiv)
+        continue-on-error: true
+        run: python3 -I audit/check_papers.py --dir research
       - name: Diagrams render
         run: ./render.sh

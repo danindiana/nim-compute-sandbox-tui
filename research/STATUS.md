@@ -34,7 +34,7 @@
 18. Bootstrapping Niche Multilingual Code Translation via RL (arXiv:2608.13854)
 19. ViseGPT: LLM-Generated Data Wrangling Scripts for R/SQL/Julia (arXiv:2508.01279)
 20. A Systematic Literature Review of Jupyter Notebook Research (arXiv:2504.16180)
-21. StarCoder: Multi-Programming Language Evaluation (arXiv:2305.06161)
+21. StarCoder: may the source be with you! (arXiv:2305.06161) [title corrected; the earlier 'Multi-Programming Language Evaluation' subtitle was invented]
 22. How Scientists Use LLMs to Program (arXiv:2502.17348)
 23. Granite Code Models: Multi-Language Code Intelligence (arXiv:2405.04324)
 
@@ -44,7 +44,7 @@
 26. [ID/TITLE CORRECTED] arXiv:2406.00515 is actually 'A Survey on Large Language Models for Code Generation' (CodeScope is a different paper, ID not verified)
 27. [ID/TITLE CORRECTED] arXiv:2410.03981 is actually a survey on code generation for low-resource/domain-specific languages (xCodeEval is a different paper, ID not verified)
 28. CodeAlchemy: Synthetic Code Rewriting (arXiv:2606.10087)
-29. [ID/TITLE CORRECTED] arXiv:2506.03524 is actually 'Seed-Coder: Let the Code Model Curate Data for Itself' (Multi-SWE-bench is a different paper, ID not verified)
+29. [ID/TITLE CORRECTED] arXiv:2506.03524 is actually 'Seed-Coder: Let the Code Model Curate Data for Itself'; Multi-SWE-bench is arXiv:2504.02605 (verified)
 30. [ID/TITLE CORRECTED] arXiv:2503.01245 is actually 'Large Language Models for Code Generation: A Comprehensive Survey of Challenges, Techniques, Evaluation, and Applications' (not BigCodeBench)
 
 **Category 3: Cross-Language Execution Frameworks (5 papers)**

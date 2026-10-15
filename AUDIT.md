@@ -19,7 +19,7 @@ Verified correct: 2402.01030 CodeAct, 2308.08155 AutoGen, 2307.13854 WebArena, 2
 (Papers were never saved as PDFs; only summarized via web_extract.)
 
 ## 2. Claims vs abstracts
-Core sandbox papers (PAPERS.md): **accurate** — 2601.16206 (8x tokens), SpecBox (2.9x P99, 45.9% mem), TomasuLLM (1.31x/1.35x, 4,010 records, zero false accepts), ZhuLong (78.5% vs 23.6%, 22.1%), EnterpriseBench (500 tasks) all match.
+Core sandbox papers (PAPERS.md): **mostly accurate** — 2601.16206 (8x tokens), SpecBox (2.9x P99, 45.9% mem), TomasuLLM (1.31x/1.35x, 4,010 records, zero false accepts), ZhuLong (78.5% vs 23.6%, 22.1% fewer calls), EnterpriseBench (500 tasks, 41.8%) match. **Correction to this audit's first pass:** ZhuLong's "+43 pp over static RAG" is wrong (78.5% vs 23.6% is vs a pure LLM, a 54.9 pp gap; 41.2 pp is the drop when sandbox execution is removed). Full table for all 44 IDs: `research/PAPER_VERIFICATION.md`.
 
 NON_PYTHON_PAPERS.md: **embellished or contradicted**
 | Line | Claim | Abstract says |
