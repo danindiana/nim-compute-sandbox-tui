@@ -7,6 +7,6 @@ digraph cov {
  subgraph cluster_t { label="Third-party only (UNVERIFIED)"; style="rounded,dashed"; color="#f0883e"; fontcolor="#f0883e";
   t1 [label="'SPACE' runtime"]; t2 [label="Firecracker microVMs, ~125 ms boot"]; t3 [label="rolling snapshots"]; }
  subgraph cluster_m { label="Modeled here"; style=rounded; color="#58a6ff"; fontcolor="#58a6ff";
-  m1 [label="Hermes API_SPEC: none of the five\n(generic COW / prewarm design)", color="#f85149"]; m2 [label="sandbox_tui: py/js/sql, soft net-off,\npersistent sqlite db", color="#58a6ff", fillcolor="#13294d"]; m3 [label="NOT built: pods, FUSE,\negress credential proxy", color="#d29922"]; }
- p3->m2 [color="#3fb950"]; p4->m2 [label="soft guard", color="#d29922"]; p2->m2 [label="sqlite file only", style=dashed, color="#d29922"]; p1->m3; p5->m3; p1->m1 [style=dotted, color="#f85149", label="absent"]; t1->m3 [style=dotted]; t2->m3 [style=dotted];
+  m1 [label="Hermes API_SPEC: none of the five\n(generic COW / prewarm design)", color="#f85149"]; m2 [label="sandbox_tui: py/js/sql, soft net-off,\npersistent sqlite db", color="#58a6ff", fillcolor="#13294d"]; m3 [label="NOT built: K8s pods, FUSE", color="#d29922"]; m4 [label="egress_proxy.nim: gateway aliases,\nCONNECT allowlist, credential injection,\nredaction (no MITM; demo not isolated)", color="#3fb950", fillcolor="#1f2937"]; }
+ p3->m2 [color="#3fb950"]; p4->m2 [label="soft guard", color="#d29922"]; p2->m2 [label="sqlite file only", style=dashed, color="#d29922"]; p1->m3; p5->m4 [color="#3fb950", label="built"]; p4->m4 [color="#3fb950", style=dashed]; p1->m1 [style=dotted, color="#f85149", label="absent"]; t1->m3 [style=dotted]; t2->m3 [style=dotted];
 }

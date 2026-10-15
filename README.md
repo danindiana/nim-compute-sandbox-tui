@@ -2,8 +2,8 @@
 
 [![verify](https://github.com/danindiana/nim-compute-sandbox-tui/actions/workflows/verify.yml/badge.svg)](https://github.com/danindiana/nim-compute-sandbox-tui/actions/workflows/verify.yml)
 
-A small, working **Nim REPL that runs Python, JavaScript and SQL** in subprocesses with a timeout, plus an
-**independent audit** of an AI agent's attempt to "research and reproduce Perplexity's compute sandbox".
+A small, working **Nim REPL that runs Python, JavaScript and SQL** in subprocesses with a timeout, an
+**egress proxy with credential injection**, plus an **independent audit** of an AI agent's attempt to "research and reproduce Perplexity's compute sandbox".
 
 > **Read this first.** This repo is **not** a reproduction of Perplexity's sandbox, and it does not claim to be.
 > The audit found that the agent's "Perplexity API spec" contains no Perplexity source material. What *is*
@@ -16,11 +16,14 @@ A small, working **Nim REPL that runs Python, JavaScript and SQL** in subprocess
 
 | Path | What it is |
 |---|---|
-| [`src/sandbox_tui.nim`](src/sandbox_tui.nim) | The working REPL (Nim 2.x, stdlib only, ~215 lines) |
+| [`src/sandbox_tui.nim`](src/sandbox_tui.nim) | The working REPL (Nim 2.x, stdlib only) |
+| [`src/egress_proxy.nim`](src/egress_proxy.nim) | Egress proxy: gateway aliases with credential injection, CONNECT allowlist (Nim, `-d:ssl`) |
+| [`config/rules.example.json`](config/rules.example.json) | Proxy rules template (placeholders only) |
 | [`AUDIT.md`](AUDIT.md) | Full audit: arXiv ID/title check, claim-vs-abstract table, Perplexity grounding, code triage |
 | [`research/`](research/) | The agent's original notes with corrections applied (kept for transparency, **unverified**) |
-| [`diagrams/`](diagrams/) | 8 dark-theme Graphviz diagrams (`.dot` + `.png` + `.svg`) |
+| [`diagrams/`](diagrams/) | 11 dark-theme Graphviz diagrams (`.dot` + `.png` + `.svg`) |
 | [`tests/smoke.sh`](tests/smoke.sh) | CI smoke test over all three languages, the network guard and the timeout |
+| [`tests/proxy_test.py`](tests/proxy_test.py) + [`mock_upstream.py`](tests/mock_upstream.py) | 28 end-to-end proxy checks (injection, rejection cases, redaction, tunnel, TUI integration) |
 | [`render.sh`](render.sh) | Re-renders every diagram |
 
 ## Background
@@ -50,7 +53,8 @@ Type code (multiple lines allowed); a line containing only `.` runs it.
 | Command | Effect |
 |---|---|
 | `:lang python\|js\|sql` | Switch language (python3, node, sqlite3) |
-| `:net on\|off` | Network access; **off by default** (soft guard, see limits) |
+| `:net off\|proxy\|on` | **off** (default): no network; **proxy**: only the egress proxy; **on**: unrestricted. off/proxy use a soft guard (see limits) |
+| `:gateways` | List the proxy's gateway alias names (never secrets) |
 | `:timeout S` | Per-run timeout, 1–600 s (default 10) |
 | `:history` / `:show N` / `:rerun N` | Review and repeat the last 50 runs |
 | `:clear` | Discard pending (un-run) input |
@@ -75,7 +79,9 @@ tests/smoke.sh        # from the repo root; exercises everything below
 - **SQL** uses `sqlite3` against a persistent `.runs/session.db`, so tables survive between runs (a small analogue of a
   persistent session filesystem).
 - **Network off** (default) prepends a guard: Python patches `socket.connect/connect_ex/getaddrinfo`; Node patches
-  `net.Socket.prototype.connect` and `dns.lookup`.
+  `net.Socket.prototype.connect` and `dns.lookup`. In **proxy** mode the same guards allow connections only to the proxy address.
+- Snippets run under `env -i` with just `PATH`, `HOME` and `LANG` (plus proxy variables in proxy mode), so the TUI's own environment
+  variables (API keys etc.) are not visible to them.
 
 ![lifecycle](diagrams/03_run_lifecycle.png)
 
@@ -89,7 +95,61 @@ tests/smoke.sh        # from the repo root; exercises everything below
 - Nim quirk worth knowing: `waitForExit(timeout)` returns the process's kill code rather than `-1` on timeout,
   so a timeout is inferred from `exit code == 137 AND elapsed >= timeout`. A script that is itself SIGKILLed right at the
   deadline would be reported as a timeout.
-- **Not implemented:** the credential-injecting egress proxy, per-session pods, a FUSE filesystem, MCP.
+- **Not implemented:** per-session pods, a FUSE filesystem, MCP, TLS interception (see below for why).
+
+## The egress proxy
+
+Perplexity's post describes sandboxes with no direct network whose outbound traffic goes through a proxy *outside* the sandbox that
+matches domains and injects credentials. `src/egress_proxy.nim` models that.
+
+![proxy architecture](diagrams/09_egress_proxy_architecture.png)
+
+**Two paths:**
+1. **Gateway** — code calls `http://127.0.0.1:8899/gw/<alias>/<path>` (the URL is in `$SANDBOX_GATEWAY`). The proxy calls the alias's
+   configured upstream over verified TLS, **drops any client-supplied `Authorization`/`Cookie`/`X-Api-Key`/`Host`**, adds the configured
+   headers, and returns the response. Any injected value that appears in the response body is redacted.
+2. **CONNECT** — `HTTPS_PROXY` works for allowlisted domains and ports only. It is an opaque tunnel with **no injection**: injecting into
+   HTTPS this way would need TLS interception (a custom CA in every runtime's trust store), which this project deliberately does not do.
+
+![decision flow](diagrams/10_request_decision_flow.png)
+
+**Hardening in the code:** rules file must be mode 600 or the proxy refuses to start; upstreams must be `https` (plain `http` only for
+loopback test servers); path traversal (`..`, `%2e`, `%2f`, backslash, CR/LF), chunked requests, oversize bodies/responses, disallowed
+methods and header floods are rejected; redirects are not followed (they could carry the credential elsewhere); wildcard allowlist
+matches that resolve to private/loopback/link-local/metadata addresses are refused; logs record method, alias/host, status and size
+only — never header values, bodies or query strings.
+
+**Rules file** (`~/.config/sandbox-proxy/rules.json`, see [`config/rules.example.json`](config/rules.example.json)):
+```json
+{ "listen": "127.0.0.1:8899",
+  "allow_domains": ["pypi.org", "*.githubusercontent.com"], "allow_ports": [443],
+  "gateways": { "example-api": { "upstream": "https://api.example.com/v1",
+                                 "inject": { "Authorization": "Bearer <token>" },
+                                 "methods": ["GET", "POST"] } } }
+```
+```bash
+nim c -d:ssl -d:release -o:src/egress_proxy src/egress_proxy.nim
+chmod 600 ~/.config/sandbox-proxy/rules.json
+src/egress_proxy                       # or: src/egress_proxy --listen 127.0.0.1:9000 path/to/rules.json
+# in sandbox_tui:   :net proxy   then   :gateways
+# python:  urllib.request.urlopen(os.environ["SANDBOX_GATEWAY"] + "/example-api/items").read()
+```
+
+### What the proxy does and does not protect
+
+![isolation boundary](diagrams/11_isolation_boundary.png)
+
+The mechanism is only as strong as the boundary around it. **In the single-container setup this repo was tested in, sandboxed code runs as the
+same user as the proxy and can read `rules.json`, so the credential is not protected there** — the tests show the mechanism and API shape, with
+canary secrets, not secret isolation. Real isolation needs the proxy in a different trust zone (host process or sidecar container whose rules file the
+sandbox cannot read) and a network policy that lets the sandbox reach *only* the proxy port. The author's container policy blocks private ranges,
+so that topology needs a firewall decision that was deliberately not made here.
+
+`tests/proxy_test.py` (28 checks, run in CI) covers: injection reaches the upstream; forged client auth is overridden; unknown alias / disallowed
+method / traversal / CRLF / oversize / chunked / absolute-URI are rejected; secrets are redacted from responses; non-allowlisted hosts and ports
+are refused on CONNECT while an allowlisted tunnel works without injection; the secret never appears in the proxy log or TUI output; a TUI
+environment canary is invisible to snippets; direct connects to non-proxy hosts are blocked in proxy mode and everything is blocked in off mode.
+Real-TLS behavior (gateway to an `https://` upstream, CONNECT through the proxy) was additionally checked manually against `example.com`.
 
 ## The audit
 
@@ -128,6 +188,8 @@ Claims found only in third-party coverage — a "SPACE" runtime, Firecracker mic
 **unverified** and treated as such here.
 
 ![coverage](diagrams/06_perplexity_coverage.png)
+
+*Update:* the egress-proxy credential model is now implemented (see above); pods and FUSE are still not.
 
 The agent's `API_SPEC.md` models none of the five published properties; it is a generic design built from SWE-agent/MCP/
 speculative-execution papers. It is retitled accordingly in [`research/`](research/).

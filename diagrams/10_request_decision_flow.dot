@@ -1,0 +1,16 @@
+digraph flow {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=TB; label="How the proxy decides (every request logged; 403/4xx by default)";
+ req [label="request line + headers\n(max 16 KB, 10 s)", color="#39c5cf", fillcolor="#0d2e2e"];
+ chunk [label="chunked / bad Content-Length?", shape=diamond, color="#d29922"]; r400 [label="400", color="#f85149"];
+ kind [label="method / target", shape=diamond, color="#d29922"];
+ g1 [label="alias known?", shape=diamond, color="#d29922"]; g2 [label="path clean?\n(no .., %2e, CRLF, backslash)", shape=diamond, color="#d29922"]; g3 [label="method allowed?\nbody <= max_body?", shape=diamond, color="#d29922"];
+ fwd [label="forward: keep only Content-Type/Accept/User-Agent\n+ inject configured headers", color="#3fb950"]; resp [label="response <= max_response?\nredact injected values", color="#3fb950"]; ok [label="return upstream status + body", color="#3fb950"];
+ c1 [label="host in allow_domains\nAND port in allow_ports?", shape=diamond, color="#d29922"]; c2 [label="wildcard match resolves to\nprivate/loopback/metadata IP?", shape=diamond, color="#d29922"]; tun [label="200 + byte tunnel", color="#3fb950"];
+ r403 [label="403 forbidden by egress policy", color="#f85149"]; r404 [label="404 unknown alias", color="#f85149"];
+ req->chunk; chunk->r400 [label="yes"]; chunk->kind [label="no"];
+ kind->g1 [label="/gw/..."]; kind->c1 [label="CONNECT"]; kind->r403 [label="anything else\n(e.g. absolute-URI)"];
+ g1->r404 [label="no"]; g1->g2 [label="yes"]; g2->r400 [label="no"]; g2->g3 [label="yes"]; g3->r403 [label="no (405/413)"]; g3->fwd [label="yes"]; fwd->resp->ok;
+ c1->r403 [label="no"]; c1->c2 [label="yes"]; c2->r403 [label="yes"]; c2->tun [label="no"];
+}

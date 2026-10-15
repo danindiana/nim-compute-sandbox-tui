@@ -1,9 +1,13 @@
 # Compute sandbox REPL: type code, end with a lone "." line, it runs in a
 # subprocess with a timeout; output, exit code and elapsed time are shown.
 # Languages: python (default), js (node), sql (sqlite3, persistent session.db).
-# Network is OFF by default via a SOFT guard (python socket / node net patches);
-# it is a convenience check, NOT a security boundary.
-import os, osproc, strutils, times, terminal
+# Network modes (:net): off (default), proxy, on. off/proxy use a SOFT guard
+# (python socket / node net patches); it is a convenience check, NOT a security
+# boundary. proxy mode only lets code reach the egress proxy (egress_proxy.nim),
+# which allowlists domains and injects credentials the sandboxed code never sees.
+# Snippets run with a scrubbed environment (env -i), so the TUI's own env vars
+# (API keys etc.) are not visible to them.
+import os, osproc, strutils, times, terminal, httpclient
 from unicode import runeLen
 
 const
@@ -19,26 +23,53 @@ type Run = object
   secs: float
 
 const
-  PyGuard = """import socket as _s
+  PyGuard = """import socket as _s, os
+_allow = os.environ.get("SANDBOX_ALLOW", "")
+_ah, _, _ap = _allow.partition(":")
 def _deny(*a, **k):
-    raise OSError("network disabled in sandbox (use :net on)")
-_s.socket.connect = _deny
-_s.socket.connect_ex = _deny
-_s.getaddrinfo = _deny
+    raise OSError("network disabled in sandbox (use :net proxy or :net on)")
+def _ok(addr):
+    return bool(_allow) and isinstance(addr, tuple) and str(addr[0]) in (_ah, "localhost") and str(addr[1]) == _ap
+_oc, _oce, _ogai = _s.socket.connect, _s.socket.connect_ex, _s.getaddrinfo
+def _connect(self, addr):
+    if not _ok(addr): _deny()
+    return _oc(self, addr)
+def _connect_ex(self, addr):
+    if not _ok(addr): _deny()
+    return _oce(self, addr)
+def _gai(host, *a, **k):
+    if not (_allow and host in (_ah, "localhost")): _deny()
+    return _ogai(host, *a, **k)
+_s.socket.connect = _connect
+_s.socket.connect_ex = _connect_ex
+_s.getaddrinfo = _gai
 import runpy, sys
 sys.argv = [sys.argv[1]]
 runpy.run_path(sys.argv[0], run_name="__main__")
 """
   JsGuard = """const net = require('net'), dns = require('dns');
-const deny = () => { throw new Error('network disabled in sandbox (use :net on)'); };
-net.Socket.prototype.connect = deny;
-dns.lookup = deny;
+const allow = process.env.SANDBOX_ALLOW || '';
+const [ah, ap] = [allow.split(':')[0], allow.split(':')[1]];
+const deny = () => { throw new Error('network disabled in sandbox (use :net proxy or :net on)'); };
+const hostOk = (h) => allow && (h === ah || h === 'localhost');
+const origConnect = net.Socket.prototype.connect;
+net.Socket.prototype.connect = function (...args) {
+  let a = args[0], host, port;
+  if (Array.isArray(a)) a = a[0];   // node passes pre-normalized [options, cb]
+  if (a && typeof a === 'object') { host = a.host || 'localhost'; port = a.port; }
+  else { port = a; host = typeof args[1] === 'string' ? args[1] : 'localhost'; }
+  if (!hostOk(String(host)) || String(port) !== ap) deny();
+  return origConnect.apply(this, args);
+};
+const origLookup = dns.lookup;
+dns.lookup = function (host, ...rest) { if (!hostOk(String(host))) deny(); return origLookup.call(this, host, ...rest); };
 """
 
 var
   history: seq[Run]
   lang = "python"
-  netOn = false
+  netMode = "off"            # off | proxy | on
+  proxyAddr = getEnv("SANDBOX_PROXY", "127.0.0.1:8899")
   timeoutSec = 10
   runDir = getCurrentDir() / ".runs"
 
@@ -48,10 +79,16 @@ proc width(): int =
 
 proc rule() = echo "─".repeat(width())
 
+proc netLabel(): string =
+  case netMode
+  of "on": "ON (unrestricted)"
+  of "proxy": "proxy " & proxyAddr
+  else: "off (soft guard)"
+
 proc banner() =
   let w = min(width(), 60)
   echo "┌" & "─".repeat(w - 2) & "┐"
-  for l in ["Compute Sandbox - Nim TUI", "python | js | sql   timeout " & $timeoutSec & "s   net " & (if netOn: "ON" else: "off (soft guard)")]:
+  for l in ["Compute Sandbox - Nim TUI", "python | js | sql   timeout " & $timeoutSec & "s   net " & netLabel()]:
     echo "│ " & l & " ".repeat(max(0, w - 4 - l.runeLen)) & " │"
   echo "└" & "─".repeat(w - 2) & "┘"
   echo "Enter code in the current language (" & lang & "). A line with just '.' runs it. ':help' for commands."
@@ -72,20 +109,31 @@ proc runCode(lng, code: string): Run =
   result.code = code
   let t0 = epochTime()
   let redir = " > " & quoteShell(outp) & " 2>&1 < /dev/null"
+  # scrubbed environment: only what an interpreter needs (+ proxy vars in proxy mode)
+  var envp = "env -i PATH=" & quoteShell(getEnv("PATH", "/usr/local/bin:/usr/bin:/bin")) &
+             " HOME=" & quoteShell(runDir) & " LANG=C.UTF-8"
+  if netMode == "proxy":
+    let pu = "http://" & proxyAddr
+    envp &= " SANDBOX_ALLOW=" & quoteShell(proxyAddr) &
+            " HTTP_PROXY=" & quoteShell(pu) & " HTTPS_PROXY=" & quoteShell(pu) &
+            " http_proxy=" & quoteShell(pu) & " https_proxy=" & quoteShell(pu) &
+            " NO_PROXY=" & quoteShell("127.0.0.1,localhost") & " no_proxy=" & quoteShell("127.0.0.1,localhost") &
+            " SANDBOX_GATEWAY=" & quoteShell(pu & "/gw")
+  let guarded = netMode != "on"
   var cmd: string
   case lng
   of "js":
-    let req = if netOn: "" else: " --require " & quoteShell(runDir / "guard.js")
-    cmd = "exec node" & req & " " & quoteShell(src) & redir
+    let req = if guarded: " --require " & quoteShell(runDir / "guard.js") else: ""
+    cmd = "exec " & envp & " node" & req & " " & quoteShell(src) & redir
   of "sql":
     # persistent db across runs, like a mounted session filesystem
-    cmd = "exec sqlite3 -header -column " & quoteShell(runDir / "session.db") & " < " &
+    cmd = "exec " & envp & " sqlite3 -header -column " & quoteShell(runDir / "session.db") & " < " &
           quoteShell(src) & " > " & quoteShell(outp) & " 2>&1"
   else:
-    if netOn:
-      cmd = "exec python3 -u " & quoteShell(src) & redir
+    if guarded:
+      cmd = "exec " & envp & " python3 -u " & quoteShell(runDir / "guard.py") & " " & quoteShell(src) & redir
     else:
-      cmd = "exec python3 -u " & quoteShell(runDir / "guard.py") & " " & quoteShell(src) & redir
+      cmd = "exec " & envp & " python3 -u " & quoteShell(src) & redir
   # exec so the timeout kill hits the interpreter itself, not just a wrapper shell
   let p = startProcess("/bin/sh", args = ["-c", cmd], options = {poUsePath})
   discard p.waitForExit(timeoutSec * 1000)
@@ -121,7 +169,9 @@ proc help() =
   :show N        show output of run N
   :rerun N       run snippet N again
   :lang L        python | js | sql  (sql keeps tables in .runs/session.db)
-  :net on|off    network access; off = soft guard, not a security boundary
+  :net off|proxy|on  off = no network (soft guard); proxy = only via the egress
+                 proxy (domain allowlist + credential injection); on = unrestricted
+  :gateways      list the proxy's gateway aliases (names only, never secrets)
   :timeout S     set timeout in seconds
   :clear         discard pending code (also works mid-entry)
   :quit          exit (also Ctrl+D / Ctrl+C)"""
@@ -172,10 +222,16 @@ proc command(line: string): bool =
       echo "language = " & lang
     else: echo "usage: :lang python|js|sql (now " & lang & ")"
   of ":net":
-    if arg == "on": netOn = true
-    elif arg == "off": netOn = false
-    else: echo "usage: :net on|off"
-    echo "net = " & (if netOn: "ON" else: "off (soft guard)")
+    if arg in ["off", "proxy", "on"]: netMode = arg
+    else: echo "usage: :net off|proxy|on"
+    echo "net = " & netLabel()
+  of ":gateways":
+    try:
+      let c = newHttpClient(timeout = 2000)
+      defer: c.close()
+      echo c.getContent("http://" & proxyAddr & "/gw")
+    except CatchableError as e:
+      echo "proxy not reachable at " & proxyAddr & " (" & e.msg & "); start egress_proxy first"
   of ":clear": discard
   else: echo "unknown command " & parts[0] & " (:help)"
   true

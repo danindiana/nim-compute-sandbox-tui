@@ -4,7 +4,7 @@ digraph arch {
  edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=TB; label="sandbox_tui.nim: one Nim REPL, three interpreters, soft network guard";
  user [label="operator (terminal)", color="#39c5cf", fillcolor="#0d2e2e"];
  subgraph cluster_nim { label="sandbox_tui (Nim, stdlib only)"; style=rounded; color="#58a6ff"; fontcolor="#58a6ff";
-  loop [label="input loop\nlines buffered until lone '.'"]; cmd [label="commands\n:lang :net :timeout :history :show :rerun"]; run [label="runCode()\nwrite snippet, build command", color="#58a6ff", fillcolor="#13294d"]; hist [label="history (last 50)"]; }
+  loop [label="input loop\nlines buffered until lone '.'"]; cmd [label="commands\n:lang :net off|proxy|on :gateways\n:timeout :history :show :rerun"]; run [label="runCode()\nwrite snippet, build command", color="#58a6ff", fillcolor="#13294d"]; hist [label="history (last 50)"]; }
  subgraph cluster_sub { label="subprocess: /bin/sh -c 'exec ...'"; style=rounded; color="#3fb950"; fontcolor="#3fb950";
   py [label="python3 -u\n(guard.py wrapper when net off)"]; js [label="node\n(--require guard.js when net off)"]; sql [label="sqlite3 -header -column\n.runs/session.db (persistent)"]; }
  out [label="stdout+stderr -> .runs/snippet.out\ncapped 20 KB", color="#d29922"];

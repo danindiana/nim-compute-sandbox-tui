@@ -61,3 +61,9 @@ Docs contradict each other: README/FINAL_SUMMARY/README_PERPLEXITY claim "comple
 5. Standing note: the agent's self-reported status claims need independent verification before publishing.
 
 Sources: https://hub-prod.perplexity.ai/hub/blog/sandbox-api-isolated-code-execution-for-ai-agents · https://karozieminski.substack.com/p/perplexity-space-runtime-computer-agents · https://techstrong.ai/articles/perplexity-unveils-space-a-secure-sandbox-platform-for-ai-agents/ · https://www.createwith.com/tool/perplexity/updates/perplexity-unveils-space-sandbox-platform-for-persistent-agent-sessions
+
+## Addendum 2026-10-15 (later): egress proxy built
+Recommendation 4's egress-proxy item is now implemented as `src/egress_proxy.nim` with `:net proxy` in the TUI (see README, "The egress proxy").
+Caveat repeated: in the tested single-container setup the proxy and sandboxed code share a uid, so the credential file is readable by the sandbox;
+the implementation demonstrates the mechanism (gateway aliases, header injection, response redaction, CONNECT allowlist) rather than secret isolation.
+No TLS interception is performed, so injection works for gateway aliases only.

@@ -1,0 +1,13 @@
+digraph proxy {
+ graph [bgcolor="#0d1117", fontname="Helvetica", fontcolor="#e6edf3", labelloc="t", fontsize=20, pad=0.4];
+ node [fontname="Helvetica", fontcolor="#e6edf3", color="#30363d", style="filled,rounded", shape=box, penwidth=2, margin="0.25,0.18", fillcolor="#161b22"];
+ edge [color="#8b949e", fontname="Helvetica", fontcolor="#adbac7", penwidth=1.6, arrowsize=0.9]; rankdir=LR; label="Egress proxy: sandboxed code never holds the credential";
+ subgraph cluster_sb { label="sandboxed run (env -i, soft net guard)"; style=rounded; color="#3fb950"; fontcolor="#3fb950";
+  code [label="python / node snippet\nsees only SANDBOX_GATEWAY +\nHTTP(S)_PROXY, no secrets"]; guard [label="guard: connect() allowed\nonly to proxy host:port", color="#f0883e"]; }
+ subgraph cluster_px { label="egress_proxy (separate process, Nim)"; style=rounded; color="#58a6ff"; fontcolor="#58a6ff";
+  gw [label="/gw/<alias>/<path>\nGateway", color="#58a6ff", fillcolor="#13294d"]; cn [label="CONNECT host:port\ndomain + port allowlist", color="#58a6ff", fillcolor="#13294d"];
+  rules [label="rules.json (mode 600)\naliases, inject headers, allowlist", color="#bc8cff", shape=note]; red [label="redact injected values\nin response bodies", color="#d29922"]; log [label="log: method, alias/host,\nstatus, bytes (no values)", color="#d29922"]; }
+ up [label="upstream API (TLS)\nreceives Authorization", color="#39c5cf", fillcolor="#0d2e2e"]; web [label="allowlisted site\n(opaque TLS tunnel)", color="#39c5cf", fillcolor="#0d2e2e"];
+ code->guard [style=dotted, arrowhead=none]; code->gw [label="http://127.0.0.1:8899/gw/..."]; code->cn [label="HTTPS_PROXY CONNECT"];
+ rules->gw [style=dashed, color="#bc8cff"]; gw->up [label="strip client auth,\nADD configured headers", color="#3fb950"]; up->red->code [label="response"]; cn->web [label="no injection\n(would need MITM)"]; gw->log [style=dotted]; cn->log [style=dotted];
+}

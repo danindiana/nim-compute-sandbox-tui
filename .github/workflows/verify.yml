@@ -12,7 +12,11 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y graphviz sqlite3
       - name: Build
         run: nim c --hints:off -d:release -o:src/sandbox_tui src/sandbox_tui.nim
+      - name: Build egress proxy
+        run: nim c --hints:off -d:ssl -d:release -o:src/egress_proxy src/egress_proxy.nim
       - name: Smoke test (python, js, sql, net guard, timeout)
         run: tests/smoke.sh
+      - name: Egress proxy end-to-end tests
+        run: python3 tests/proxy_test.py
       - name: Diagrams render
         run: ./render.sh

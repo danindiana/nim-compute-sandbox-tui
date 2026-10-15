@@ -3,3 +3,6 @@ src/.runs/
 .runs/
 nimcache/
 *.bak*
+src/egress_proxy
+rules.json
+!config/rules.example.json

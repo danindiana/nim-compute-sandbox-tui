@@ -1,0 +1,14 @@
+{
+  "listen": "127.0.0.1:8899",
+  "allow_domains": ["pypi.org", "files.pythonhosted.org", "*.githubusercontent.com"],
+  "allow_ports": [443],
+  "gateways": {
+    "example-api": {
+      "upstream": "https://api.example.com/v1",
+      "inject": { "Authorization": "Bearer REPLACE_WITH_REAL_TOKEN" },
+      "methods": ["GET", "POST"],
+      "max_body": 1000000,
+      "max_response": 5000000
+    }
+  }
+}
